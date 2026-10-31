@@ -3,6 +3,12 @@
 set -eu -o pipefail
 exec 2>/dev/null
 sha=$1
+mode=${2-}
+[[ "$mode" = "" || "$mode" = topology-only ]]
+if [ "$mode" = topology-only ]; then
+  DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+  timeout 8 bash "$DIR/capture.sh"
+fi
 [[ "$sha" =~ ^[0-9a-f]{40}$ ]]
 name=wallet-security-mail-gateway
 image=wallet-security-mail-gateway:$sha
@@ -36,11 +42,13 @@ created=false
 stage=credentials
 keys=$(docker inspect -f '{{range .Config.Env}}{{println (index (split . "=") 0)}}{{end}}' "$name")
 if printf '%s\n' "$keys" | grep -Eq 'TOKEN|PASSWORD|SECRET|CONTACT|DATABASE_URL'; then false; fi
-stage=networks
+stage=network_names
 networks=$(docker inspect -f '{{range $k,$v := .NetworkSettings.Networks}}{{println $k}}{{end}}' "$name" | sort)
 [ "$networks" = "$(printf '%s\n' wallet-security-mailu-outbound wallet-security-notification | sort)" ]
+stage=network_internal
 [ "$(docker network inspect -f '{{.Internal}}' wallet-security-notification)" = true ]
 [ "$(docker network inspect -f '{{.Internal}}' wallet-security-mailu-outbound)" = false ]
+stage=network_members
 [ "$(docker network inspect -f '{{len .Containers}}' wallet-security-notification)" = 1 ]
 [ "$(docker network inspect -f '{{len .Containers}}' wallet-security-mailu-outbound)" = 1 ]
 stage=resource_bounds
@@ -54,6 +62,10 @@ worker=$(docker ps -q --filter label=com.docker.compose.project=qri1j8vhtwwb9aky
 [[ "$worker" =~ ^[0-9a-f]{12,64}$ ]]
 [ "$(docker inspect -f '{{range $k,$v := .NetworkSettings.Networks}}{{println $k}}{{end}}' "$worker")" = qri1j8vhtwwb9akyxfiw73gc_private ]
 docker exec "$worker" /bin/bash -c 'set -eu; test "$(id -u)" = 10001; if timeout 2 bash -c "exec 3<>/dev/tcp/167.233.253.175/587" >/dev/null 2>&1; then exit 1; fi' >/dev/null 2>&1
+if [ "$mode" = topology-only ]; then
+  printf '%s\n' gateway_topology_structural_guards_pass_not_delivery=true
+  exit 0
+fi
 stage=tls_probe
 docker run --rm --name wallet-security-mail-gateway-probe --network wallet-security-notification --read-only --cap-drop ALL --security-opt no-new-privileges:true --memory 64m --cpus 0.1 --pids-limit 16 --log-driver none --entrypoint /bin/bash "$image" /app/preflight.sh
 stage=receipt

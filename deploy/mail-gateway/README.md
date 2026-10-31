@@ -93,3 +93,24 @@ classify the observer itself; its own namespace hostname is only a count hint. I
 absence is explicit; surviving owned networks/events do not imply a runtime
 pass. The receiver accepts only closed typed records. The gateway image source
 remains the fixed reviewed `44a2d36...`; observer Git source is a separate pin.
+
+## One stopped-after-capture topology reproduction
+
+`--reproduce` is a separate, independently reviewed diagnostic action, not a
+release. It uses the existing exact image/source `44a2d36...` and fetches only
+that commit's RAW Compose declaration, verifying its fixed SHA-256 before using
+it from memory with a public source value and `/dev/null` env-file. No normal
+preview, credentials, worker attachment, network repair, proxy settings, image
+build or TLS/AUTH/send is used.
+
+The fixed gateway must be absent before the action. While the newly created
+owned gateway is alive, `capture.sh` emits closed network name/ID/internal/member
+and alias records before assertions. Unknown member identities are redacted.
+The existing identity, privilege, exact-network, resource and direct-worker-
+egress guards remain intact; network names, isolation and membership have
+separate failure stages. Diagnostic mode stops before TLS and emits no normal
+runtime acceptance receipt. The EXIT/TERM cleanup verifies only this app's
+newly owned gateway and stops it by ID, retaining its metadata. It never removes
+that container or another service. Success and failure both deliberately end
+with a failed build so no normal release continuation runs. Restore normal
+configuration separately, without deploying, after collecting the evidence.

@@ -72,6 +72,16 @@ class Observer(unittest.TestCase):
    self.assertFalse(marker.exists())
    for line in r.stdout.splitlines():
     if line.startswith('{'):self.assertTrue(m.observer_record(line),line)
+ def test_live_capture_only_gateway_and_redacted_members(self):
+  with tempfile.TemporaryDirectory() as directory:
+   root=Path(directory);binary=root/'docker';binary.write_text(FAKE.replace("elif '.State.Running' in f:print('false')","elif '.State.Running' in f:print('true')"));binary.chmod(0o700)
+   marker=root/'mutation';env=os.environ.copy();env.update(PATH=str(root)+':'+env['PATH'],OBSERVER_MUTATION_MARKER=str(marker))
+   r=subprocess.run(['bash',str(ROOT/'capture.sh')],env=env,capture_output=True,text=True,timeout=5)
+   self.assertEqual(r.returncode,0)
+   self.assertIn('gateway_topology_capture_complete running=true',r.stdout)
+   self.assertNotIn('unrelated-private-service',r.stdout)
+   self.assertNotIn('seal-3nol',r.stdout)
+   self.assertFalse(marker.exists())
  def test_reader_rejects_env_values_and_unknown_fields(self):
   self.assertFalse(m.observer_record(json.dumps({'record':'env_name','role':'sealer','name':'SEALER_KEY=synthetic-secret'})))
   self.assertFalse(m.observer_record(json.dumps({'record':'env_name','role':'sealer','name':'SEALER_KEY','value':'synthetic-secret'})))
