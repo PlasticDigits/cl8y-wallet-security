@@ -56,7 +56,7 @@ pub async fn record(
 ) -> Result<()> {
     sqlx::query("INSERT INTO security_events(id,profile_id,action,wallet,proposed_at,executable_at) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT DO NOTHING")
  .bind(id).bind(profile).bind(action).bind(wallet).bind(start).bind(end).execute(&mut **tx).await?;
-    sqlx::query("INSERT INTO notification_outbox(id,event_id,contact_id) SELECT gen_random_uuid(),$1,id FROM contacts WHERE profile_id=$2 AND verified_at IS NOT NULL AND deleted_at IS NULL AND (removal_at IS NULL OR removal_at>now()) ON CONFLICT DO NOTHING")
+    sqlx::query("INSERT INTO notification_outbox(id,event_id,contact_id) SELECT gen_random_uuid(),$1,id FROM contacts WHERE profile_id=$2 AND verified_at IS NOT NULL AND (activation_at IS NULL OR activation_at<=now()) AND deleted_at IS NULL AND (removal_at IS NULL OR removal_at>now()) ON CONFLICT DO NOTHING")
  .bind(id).bind(profile).execute(&mut **tx).await?;
     Ok(())
 }

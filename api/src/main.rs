@@ -26,6 +26,7 @@ pub struct App {
     pub source_sha: String,
     pub contact_key: Arc<[u8; 32]>,
     pub admission: Arc<admission::Admission>,
+    pub trusted_proxies: Arc<std::collections::HashSet<std::net::IpAddr>>,
 }
 #[derive(Debug)]
 pub struct Error(StatusCode, &'static str);
@@ -147,6 +148,18 @@ async fn main() -> anyhow::Result<()> {
         .fetch_one(&db)
         .await?;
     anyhow::ensure!(applied >= 2, "migrations required");
+    let mut trusted_proxies = std::collections::HashSet::new();
+    if mode == "api" {
+        if let Ok(host) = env::var("TRUSTED_PROXY_HOST") {
+            for address in tokio::net::lookup_host((host.as_str(), 80)).await? {
+                trusted_proxies.insert(address.ip());
+            }
+            anyhow::ensure!(
+                !trusted_proxies.is_empty(),
+                "trusted proxy identity could not be resolved"
+            );
+        }
+    }
     let app = App {
         db,
         origin: origin.trim_end_matches('/').into(),
@@ -154,6 +167,7 @@ async fn main() -> anyhow::Result<()> {
         source_sha: env::var("SOURCE_SHA").unwrap_or_else(|_| "development".into()),
         contact_key: Arc::new(key),
         admission: Arc::new(admission::Admission::default()),
+        trusted_proxies: Arc::new(trusted_proxies),
     };
     if mode == "worker" {
         return worker::run(app).await;

@@ -117,7 +117,11 @@ pub async fn challenge(
     Json(input): Json<ChallengeInput>,
 ) -> Result<Json<Value>> {
     origin(&app, &headers)?;
-    app.admission.admit(peer.ip())?;
+    app.admission.admit(crate::admission::client_ip(
+        peer.ip(),
+        &app.trusted_proxies,
+        &headers,
+    )?)?;
     if !valid_address(&input.address) {
         return Err(Error::bad("invalid wallet"));
     }

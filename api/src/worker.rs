@@ -10,10 +10,15 @@ pub fn backoff(attempt: i32) -> i64 {
         .min(3600)
 }
 async fn dispatch(app: &App) -> anyhow::Result<()> {
-    // Claim one bounded batch; lease reclaims a worker crash. Provider I/O never holds a DB lock.
-    let rows=sqlx::query("UPDATE notification_outbox SET state='sending',attempts=attempts+1,locked_until=now()+interval '2 minutes' WHERE id IN (SELECT id FROM notification_outbox WHERE ((state IN ('pending','blocked') AND next_attempt_at<=now()) OR (state='sending' AND locked_until<now())) AND attempts<8 ORDER BY created_at LIMIT 20 FOR UPDATE SKIP LOCKED) RETURNING id,event_id,contact_id,template,encrypted_payload,attempts")
- .fetch_all(&app.db).await?;
-    for row in rows {
+    // One claim immediately before each send; no serially waiting leased batch.
+    // Telegram has no idempotency key: an expired in-flight send is visible uncertainty,
+    // never silently retried. Email provider retries retain the same idempotency key.
+    sqlx::query("UPDATE notification_outbox o SET state='failed',last_error_code='delivery_uncertain',locked_until=NULL WHERE state='sending' AND locked_until<now() AND (created_at<now()-interval '23 hours' OR EXISTS(SELECT 1 FROM contacts c WHERE c.id=o.contact_id AND c.kind='telegram'))").execute(&app.db).await?;
+    for _ in 0..20 {
+        let lease = Uuid::new_v4();
+        let Some(row) = claim(app, lease).await? else {
+            break;
+        };
         let id: Uuid = row.get("id");
         let contact: Uuid = row.get("contact_id");
         let event: String = row.get("event_id");
@@ -36,12 +41,13 @@ async fn dispatch(app: &App) -> anyhow::Result<()> {
   }.await;
         match result {
             Ok(()) => {
-                sqlx::query("UPDATE notification_outbox SET state='sent',sent_at=now(),locked_until=NULL,last_error_code=NULL,encrypted_payload=NULL WHERE id=$1").bind(id).execute(&app.db).await?;
+                sqlx::query("UPDATE notification_outbox SET state='sent',sent_at=now(),locked_until=NULL,last_error_code=NULL,encrypted_payload=NULL WHERE id=$1 AND lease_id=$2 AND state='sending'").bind(id).bind(lease).execute(&app.db).await?;
             }
             Err(code) => {
                 let blocked =
                     code == "provider_unconfigured" || code == "sandbox_destination_not_allowed";
                 let failed = (!blocked && attempts >= 8)
+                    || (data.get::<String, _>("kind") == "telegram" && code == "transport_failure")
                     || [
                         "verification_expired",
                         "provider_rejected",
@@ -49,14 +55,17 @@ async fn dispatch(app: &App) -> anyhow::Result<()> {
                         "payload_decrypt_failed",
                     ]
                     .contains(&code);
-                sqlx::query("UPDATE notification_outbox SET state=$2,last_error_code=$3,locked_until=NULL,next_attempt_at=now()+make_interval(secs=>$4),attempts=CASE WHEN $5 THEN attempts-1 ELSE attempts END WHERE id=$1")
-    .bind(id).bind(if failed{"failed"}else if blocked{"blocked"}else{"pending"}).bind(code).bind(if blocked{300.0}else{backoff(attempts) as f64}).bind(blocked).execute(&app.db).await?;
+                sqlx::query("UPDATE notification_outbox SET state=$2,last_error_code=$3,locked_until=NULL,next_attempt_at=now()+make_interval(secs=>$4),attempts=CASE WHEN $5 THEN attempts-1 ELSE attempts END WHERE id=$1 AND lease_id=$6 AND state='sending'")
+    .bind(id).bind(if failed{"failed"}else if blocked{"blocked"}else{"pending"}).bind(code).bind(if blocked{300.0}else{backoff(attempts) as f64}).bind(blocked).bind(lease).execute(&app.db).await?;
             }
         }
     }
     // A lease lost at final attempt must become visible failure, never remain stuck sending.
     sqlx::query("UPDATE notification_outbox SET state='failed',last_error_code='delivery_uncertain',locked_until=NULL WHERE state='sending' AND attempts>=8 AND locked_until<now()").execute(&app.db).await?;
     Ok(())
+}
+pub(crate) async fn claim(app: &App, lease: Uuid) -> anyhow::Result<Option<sqlx::postgres::PgRow>> {
+    Ok(sqlx::query("UPDATE notification_outbox SET state='sending',attempts=attempts+1,locked_until=now()+interval '2 minutes',lease_id=$1 WHERE id=(SELECT id FROM notification_outbox WHERE ((state IN ('pending','blocked') AND next_attempt_at<=now()) OR (state='sending' AND locked_until<now())) AND attempts<8 ORDER BY CASE WHEN template='timer_start' THEN 0 ELSE 1 END,created_at LIMIT 1 FOR UPDATE SKIP LOCKED) RETURNING id,event_id,contact_id,template,encrypted_payload,attempts").bind(lease).fetch_optional(&app.db).await?)
 }
 pub async fn tick(app: &App) -> anyhow::Result<()> {
     dispatch(app).await?;

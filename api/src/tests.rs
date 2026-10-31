@@ -70,6 +70,7 @@ async fn postgres_replay_consent_outbox_concurrency() {
         source_sha: "test".into(),
         contact_key: Arc::new([7; 32]),
         admission: Arc::new(admission::Admission::default()),
+        trusted_proxies: Arc::new(Default::default()),
     };
     let mut headers = HeaderMap::new();
     headers.insert(
