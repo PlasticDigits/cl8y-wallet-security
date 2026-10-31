@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 import re
 from backup_control import Api, Failure, identifier, safe_main, validate_sealer, write_private
+from export_observation import inspector_guard
 
 
 def main():
@@ -34,15 +35,9 @@ def main():
                 'redact_all_env_values_in_logs':True,'docker_compose_custom_build_command':'/bin/false',
                 'docker_compose_custom_start_command':'/bin/false'})
             resource=api.call('GET','/applications/'+identifier(resource['uuid']))
-    destination=resource.get('destination') or {};settings=resource.get('settings') or {}
-    if (resource.get('name')!=name or any(resource.get(k)!=v for k,v in config['resource_context'].items() if k!='server_id')
-        or destination.get('uuid')!=config['destination_uuid']
-        or (destination.get('server') or {}).get('uuid')!=config['server_uuid']
-        or resource.get('git_commit_sha')!=args.observer_source or resource.get('build_pack')!='dockercompose'
-        or not settings.get('is_raw_compose_deployment_enabled') or settings.get('is_auto_deploy_enabled')
-        or settings.get('is_preview_deployments_enabled') or settings.get('inject_build_args_to_dockerfile') is not False):
-        raise Failure('observer_actual_scope_or_source_differs')
-    config.update(inspector_app_uuid=resource['uuid'],inspector_name=name,inspector_source_sha=args.observer_source)
+    config.update(inspector_app_uuid=resource['uuid'],inspector_name=name,inspector_source_sha=args.observer_source,
+                  inspector_source_branch=args.source_branch)
+    inspector_guard(api,config,resource)
     write_private(path,config)
     print(json.dumps({'stopped_readonly_observer_resource_prepared':True,'resource_uuid':resource['uuid'],
         'source_sha':args.observer_source,'deployment_requested':False,'runtime_or_credentials_supplied':False}))

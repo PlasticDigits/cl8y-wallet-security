@@ -186,14 +186,16 @@ class FinalControllerNegatives(unittest.TestCase):
 
 class TaskAndFenceOutcomes(unittest.TestCase):
     def test_execute_response_error_is_reconciled_before_task_deletion(self):
-        now=dt.datetime.now(dt.timezone.utc).isoformat();events=[]
+        now=dt.datetime.now(dt.timezone.utc).isoformat();events=[];dispatched=[False]
         class Api:
             def call(self,method,path,data=None):
                 events.append((method,path))
                 if method=='GET' and path.endswith('/scheduled-tasks'):return []
                 if method=='POST' and path.endswith('/scheduled-tasks'):return {'uuid':ID}
-                if path.endswith('/execute'):raise Failure('control_plane_http_500')
-                if path.endswith('/executions'):return [{'status':'success','created_at':now,'message':'owned-done'}]
+                if path.endswith('/execute'):
+                    dispatched[0]=True
+                    raise Failure('control_plane_http_500')
+                if path.endswith('/executions'):return [{'status':'success','created_at':now,'message':'owned-done'}] if dispatched[0] else []
                 if method=='DELETE':return {}
                 raise AssertionError('unexpected')
         self.assertEqual(capture.task(Api(),'s'*24,'owned','fixed-command',1),'owned-done')
@@ -223,3 +225,40 @@ class TaskAndFenceOutcomes(unittest.TestCase):
                 with self.assertRaisesRegex(Failure,'cleanup_unconfirmed'):capture.main()
             self.assertEqual(commands,['/bin/bash /app/seal-backup.sh pause'])
             self.assertFalse(any(call.get('release') for call in claims))
+
+class InspectorScope(unittest.TestCase):
+    def fixture(self):
+        import export_observation as observation
+        cfg={'inspector_app_uuid':'i'*24,'inspector_name':'owned-inspector','inspector_source_sha':'a'*40,'inspector_source_branch':'owned/source',
+             'destination_uuid':'d'*24,'server_uuid':'s'*24,'resource_context':{'environment_id':0,'destination_id':0,'server_id':0}}
+        raw=(ROOT/'backup-inspector/compose.yml').read_text()
+        value={'uuid':cfg['inspector_app_uuid'],'name':cfg['inspector_name'],'environment_id':0,'destination_id':0,
+            'destination':{'uuid':cfg['destination_uuid'],'server':{'uuid':cfg['server_uuid']}},'git_repository':'https://git.cl8y.com/code/cl8y-wallet-security.git',
+            'git_commit_sha':'a'*40,'git_branch':'owned/source','build_pack':'dockercompose','docker_compose_location':'/deploy/backup-inspector/compose.yml',
+            'docker_compose_custom_start_command':'/bin/false','docker_compose_custom_build_command':'/bin/false','docker_compose_raw':raw,'status':'exited:unhealthy',
+            'settings':{'is_raw_compose_deployment_enabled':True,'is_preserve_repository_enabled':True,'is_auto_deploy_enabled':False,
+            'is_preview_deployments_enabled':False,'inject_build_args_to_dockerfile':False,'include_coolify_default_variables':False}}
+        return observation,cfg,value
+    def test_only_stopped_never_start_noenv_resource_is_observable(self):
+        module,cfg,value=self.fixture()
+        class Api:
+            def call(self,*_args,**_kwargs):return []
+        module.inspector_guard(Api(),cfg,value)
+        for key,changed in [('git_repository','https://wrong.invalid'),('docker_compose_custom_start_command','unsafe'),('docker_compose_raw','services: {}'),('status','running:healthy'),('docker_compose_location','/wrong.yml'),('uuid','z'*24)]:
+            with self.subTest(key=key),self.assertRaises(Failure):module.inspector_guard(Api(),cfg,{**value,key:changed})
+        class CredentialEnv:
+            def call(self,*_args,**_kwargs):return [{'key':'unexpected'}]
+        with self.assertRaises(Failure):module.inspector_guard(CredentialEnv(),cfg,value)
+
+class FreshTaskCorrelation(unittest.TestCase):
+    def test_prior_execution_on_supposed_fresh_id_rejected_before_dispatch(self):
+        events=[]
+        class Api:
+            def call(self,method,path,data=None):
+                events.append((method,path))
+                if path.endswith('/scheduled-tasks') and method=='GET':return []
+                if path.endswith('/scheduled-tasks') and method=='POST':return {'uuid':ID}
+                if path.endswith('/executions'):return [{'uuid':'old','status':'success','created_at':dt.datetime.now(dt.timezone.utc).isoformat(),'message':'OLD_PAUSE_SUCCESS'}]
+                raise AssertionError('must not dispatch or delete')
+        with self.assertRaisesRegex(Failure,'prior_executions'):capture.task(Api(),'s'*24,'owned','fixed-command',1)
+        self.assertFalse(any(path.endswith('/execute') or method=='DELETE' for method,path in events))

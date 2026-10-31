@@ -88,6 +88,9 @@ def wait_private_closed():
 
 
 def task(api, service, name, command, timeout=210):
+    # A fresh disabled task is owned by this invocation, not a reused name with
+    # historical executions that can masquerade as an unknown current dispatch.
+    name = name + '-' + secrets.token_hex(8)
     prefix = '/services/' + identifier(service) + '/scheduled-tasks'
     found = [item for item in api.call('GET', prefix) if item.get('name') == name]
     if len(found) > 1: raise Failure('ambiguous_owned_task')
@@ -98,6 +101,9 @@ def task(api, service, name, command, timeout=210):
         item = api.call('POST', prefix, {'name': name, 'command': command,
               'frequency': '0 0 1 1 *', 'timeout': timeout, 'enabled': False})
     task_id = identifier(item['uuid'])
+    baseline = api.call('GET', prefix + '/' + task_id + '/executions')
+    if baseline:
+        raise Failure('fresh_claim_task_has_prior_executions')
     started = dt.datetime.now(dt.timezone.utc)
     deadline = time.monotonic() + timeout
     executed = False
