@@ -1,0 +1,12 @@
+{
+  "contact_key_preserved": true,
+  "created": true,
+  "credential_arguments_used": false,
+  "custody_backend": "OpenBao existing identity-scoped private KV",
+  "fresh_backend_age_decryption": true,
+  "fresh_backend_contact_decryption": true,
+  "plaintext_credential_files_written": false,
+  "version": 1,
+  "workload_received_operator_or_recovery_credentials": false,
+  "workload_source_sha": "e44569e45b15dbee4b0347dff742f92bd85bedb2"
+}

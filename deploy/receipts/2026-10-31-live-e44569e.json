@@ -1,7 +1,7 @@
 {
   "acceptance_gates": {
     "chain_registry": "unconfigured",
-    "contact_key_recovery": "unverified; deployment owner continuation",
+    "contact_key_recovery": "verified by fresh scoped OpenBao read and owned AESGCM/age recovery; separate receipt",
     "external_wallet_extension_signing": "not tested",
     "offhost_encrypted_backup": "unverified; deployment owner continuation",
     "real_notification_sends": "disabled"
