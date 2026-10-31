@@ -57,14 +57,47 @@ def lease(client, entity, config, owner, release=False, renew=False):
         raise Failure('lease_volume_binding_differs')
     if release:
         if current.get('owner') != owner: return
+        if current.get('state') != 'clean' or json.loads(current.get('intents', '[]')):
+            raise Failure('global_unresolved_backup_hold_cannot_release')
     elif renew:
         if current.get('owner') != owner or int(current.get('expires', '0')) <= now:
             raise Failure('backup_fencing_claim_lost_or_expired')
     elif int(current.get('expires', '0')) > now and current.get('owner') != owner:
         raise Failure('owned_volume_backup_busy')
-    value = {'owner': owner, 'volume': config['resolved_sealed_volume'], 'expires': str(0 if release else now + 900)}
+    elif current and (current.get('state') != 'clean' or json.loads(current.get('intents', '[]'))):
+        raise Failure('global_backup_reconciliation_required_before_failover')
+    value = {'owner': owner, 'volume': config['resolved_sealed_volume'], 'expires': str(0 if release else now + 900),
+             'state': current.get('state', 'clean') if renew else 'clean',
+             'intents': current.get('intents', '[]') if renew else '[]'}
     client.request('POST', 'agent-secrets/data/' + entity + '/' + name,
                    {'options': {'cas': metadata['version']}, 'data': value})
+
+
+def journal(client, entity, config, owner, action, record, persist):
+    name = 'wallet-security/offhost-lease'
+    current, metadata = optional_kv(client, entity, name)
+    if (current.get('owner') != owner or current.get('volume') != config['resolved_sealed_volume']
+        or int(current.get('expires', '0')) <= int(time.time())):
+        raise Failure('global_backup_journal_fencing_claim_lost')
+    intents = json.loads(current.get('intents', '[]'))
+    key = record['intent_id']
+    if action == 'begin':
+        if any(item['intent_id'] == key for item in intents): raise Failure('duplicate_global_intent')
+        intents.append(record)
+    elif action == 'bind':
+        found = [item for item in intents if item['intent_id'] == key]
+        if len(found) != 1: raise Failure('global_intent_missing')
+        found[0].update(record)
+    elif action == 'resolved':
+        if sum(item['intent_id'] == key for item in intents) != 1: raise Failure('global_intent_missing')
+        intents = [item for item in intents if item['intent_id'] != key]
+    else: raise Failure('invalid_global_journal_action')
+    value = {**current, 'state': 'unresolved' if intents else 'clean',
+             'intents': json.dumps(intents, sort_keys=True, separators=(',', ':'))}
+    client.request('POST', 'agent-secrets/data/' + entity + '/' + name,
+                   {'options': {'cas': metadata['version']}, 'data': value})
+    config['global_unresolved'] = bool(intents)
+    persist()
 
 
 def new_claim(config):
@@ -87,7 +120,7 @@ def wait_private_closed():
         time.sleep(1)
 
 
-def task(api, service, name, command, timeout=210):
+def task(api, service, name, command, timeout=210, intent=None):
     # A fresh disabled task is owned by this invocation, not a reused name with
     # historical executions that can masquerade as an unknown current dispatch.
     name = name + '-' + secrets.token_hex(8)
@@ -105,6 +138,10 @@ def task(api, service, name, command, timeout=210):
     if baseline:
         raise Failure('fresh_claim_task_has_prior_executions')
     started = dt.datetime.now(dt.timezone.utc)
+    intent_id = 'task:' + task_id
+    if intent:
+        intent('begin', {'intent_id': intent_id, 'kind': 'task', 'service': service, 'task': task_id,
+            'command': command, 'started_at': started.isoformat()})
     deadline = time.monotonic() + timeout
     executed = False
     try:
@@ -138,6 +175,7 @@ def task(api, service, name, command, timeout=210):
     finally:
         if executed:
             api.call('DELETE', prefix + '/' + task_id)
+            if intent: intent('resolved', {'intent_id': intent_id})
 
 
 def ready_record(message):
@@ -193,7 +231,7 @@ def cleanup_export(api, config, persist):
     persist()
 
 
-def fetch_cipher(api, config, record, persist, probe_only=False, fence=lambda: None):
+def fetch_cipher(api, config, record, persist, probe_only=False, fence=lambda: None, intent=None):
     # Never take over an occupied private listener belonging to another role.
     try:
         with socket.create_connection(('10.8.0.1', 18188), timeout=2): pass
@@ -215,6 +253,11 @@ def fetch_cipher(api, config, record, persist, probe_only=False, fence=lambda: N
     compose = yaml.safe_load(raw)
     config['active_export'] = {'name': name, 'expires': expires, 'compose': compose}
     persist()
+    intent_id = 'export:' + name
+    if intent:
+        intent('begin', {'intent_id': intent_id, 'kind': 'export', 'name': name, 'expires': str(expires),
+            'compose': compose, 'context': config['resource_context'], 'server_uuid': config['server_uuid'],
+            'destination_uuid': config['destination_uuid']})
     try:
         fence()
         created = api.call('POST', '/services', {'name': name, 'project_uuid': config['project_uuid'],
@@ -222,6 +265,7 @@ def fetch_cipher(api, config, record, persist, probe_only=False, fence=lambda: N
             'destination_uuid': config['destination_uuid'], 'instant_deploy': False,
             'redact_all_env_values_in_logs': True, 'docker_compose_raw': base64.b64encode(raw.encode()).decode()})
         exporter = identifier(created['uuid']); config['active_export']['uuid'] = exporter; persist()
+        if intent: intent('bind', {'intent_id': intent_id, 'resource_uuid': exporter})
         actual = api.call('GET', '/services/' + exporter)
         context_guard(actual, config, name, compose, exporter)
         api.call('PATCH', '/services/' + exporter + '/envs',
@@ -262,6 +306,7 @@ def fetch_cipher(api, config, record, persist, probe_only=False, fence=lambda: N
         return ciphertext
     finally:
         cleanup_export(api, config, persist)
+        if intent: intent('resolved', {'intent_id': intent_id})
         del token
 
 
@@ -331,15 +376,16 @@ def main():
         owner = new_claim(config)
         persist(); lease(client, entity, config, owner)
         def fence(): lease(client, entity, config, owner, renew=True)
+        def intent(action, record): journal(client, entity, config, owner, action, record, persist)
         paused = False
         try:
             cleanup_export(api, config, persist)
             fence()
             paused = True
-            message = task(api, config['sealer_uuid'], 'wallet-security-offhost-pause', '/bin/bash /app/seal-backup.sh pause')
+            message = task(api, config['sealer_uuid'], 'wallet-security-offhost-pause', '/bin/bash /app/seal-backup.sh pause', intent=intent)
             record = ready_record(message)
             fence()
-            ciphertext = fetch_cipher(api, config, record, persist, args.probe_only, fence)
+            ciphertext = fetch_cipher(api, config, record, persist, args.probe_only, fence, intent)
             if args.probe_only:
                 print(json.dumps({'private_authenticated_head_probe': True, 'ciphertext_get_or_upload': False,
                     'temporary_export_stop_delete_confirmed': True, 'fresh_completed_pair_pause': True}))
@@ -358,7 +404,7 @@ def main():
             fence()
             # Resume producer only after the full immutable ciphertext was
             # captured+hashed and the temporary reader was removed.
-            task(api, config['sealer_uuid'], 'wallet-security-offhost-resume', '/bin/bash /app/seal-backup.sh resume', 30)
+            task(api, config['sealer_uuid'], 'wallet-security-offhost-resume', '/bin/bash /app/seal-backup.sh resume', 30, intent)
             paused = False
             storage = api.call('GET', '/s3-storages/' + identifier(config['s3_source_uuid']))
             s3 = s3_client(storage); bucket = check_bucket(s3, config)
@@ -396,17 +442,17 @@ def main():
         finally:
             # Cleanup uncertainty keeps the producer fenced and claim active.
             # The next owner must reconcile the exact old helper before resume.
-            if not config.get('active_export') and not config.get('unknown_task'):
+            if not config.get('active_export') and not config.get('unknown_task') and not config.get('global_unresolved'):
                 try:
                     if paused:
                         fence()
-                        task(api, config['sealer_uuid'], 'wallet-security-offhost-resume', '/bin/bash /app/seal-backup.sh resume', 30)
+                        task(api, config['sealer_uuid'], 'wallet-security-offhost-resume', '/bin/bash /app/seal-backup.sh resume', 30, intent)
                 except UnknownTask as error:
                     config['unknown_task'] = error.record
                     persist()
                     raise
                 finally:
-                    if not config.get('unknown_task'):
+                    if not config.get('unknown_task') and not config.get('global_unresolved'):
                         lease(client, entity, config, owner, release=True)
 
 

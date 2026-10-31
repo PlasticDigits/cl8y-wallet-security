@@ -262,3 +262,27 @@ class FreshTaskCorrelation(unittest.TestCase):
                 raise AssertionError('must not dispatch or delete')
         with self.assertRaisesRegex(Failure,'prior_executions'):capture.task(Api(),'s'*24,'owned','fixed-command',1)
         self.assertFalse(any(path.endswith('/execute') or method=='DELETE' for method,path in events))
+
+class DurableGlobalHold(unittest.TestCase):
+    def test_expired_unresolved_global_journal_blocks_prefailure_clone(self):
+        cfg={'resolved_sealed_volume':'owned'};writes=[]
+        client=type('Client',(),{'request':lambda *_a,**_k:writes.append(True)})()
+        hold={'owner':'old','volume':'owned','expires':'0','state':'unresolved','intents':json.dumps([{'intent_id':'task:old','kind':'task','command':'pause'}])}
+        with patch.object(capture,'optional_kv',return_value=(hold,{'version':3})):
+            with self.assertRaisesRegex(Failure,'reconciliation_required'):capture.lease(client,'entity',cfg,'fresh-cloned-owner')
+        self.assertEqual(writes,[])
+    def test_expired_clean_claim_can_recover_without_erasing_holds(self):
+        calls=[]
+        client=type('Client',(),{'request':lambda *_a,**_k:calls.append(_a[-1])})()
+        clean={'owner':'old','volume':'owned','expires':'0','state':'clean','intents':'[]'}
+        with patch.object(capture,'optional_kv',return_value=(clean,{'version':3})):
+            capture.lease(client,'entity',{'resolved_sealed_volume':'owned'},'fresh')
+        self.assertEqual(calls[0]['options']['cas'],3);self.assertEqual(calls[0]['data']['owner'],'fresh')
+        self.assertEqual(calls[0]['data']['state'],'clean')
+    def test_renew_does_not_drop_unresolved_journal(self):
+        calls=[];client=type('Client',(),{'request':lambda *_a,**_k:calls.append(_a[-1])})()
+        hold={'owner':'mine','volume':'owned','expires':str(int(time.time())+100),'state':'unresolved','intents':'[{"intent_id":"export:owned"}]'}
+        with patch.object(capture,'optional_kv',return_value=(hold,{'version':4})):
+            capture.lease(client,'entity',{'resolved_sealed_volume':'owned'},'mine',renew=True)
+            with self.assertRaises(Failure):capture.lease(client,'entity',{'resolved_sealed_volume':'owned'},'mine',release=True)
+        self.assertEqual(len(calls),1);self.assertEqual(calls[0]['data']['intents'],hold['intents']);self.assertEqual(calls[0]['data']['state'],'unresolved')
