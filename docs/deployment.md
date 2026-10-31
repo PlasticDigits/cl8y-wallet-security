@@ -27,6 +27,24 @@ lists placeholders, never actual values. Neither app runtime receives the
 bootstrap or migration credential. Preserve the contact encryption key in the
 authorized workload secret store across database restore and image rollback.
 Losing it makes existing encrypted contacts unreadable.
+All credentials must have `is_runtime=true` and `is_buildtime=false`; only the
+public `SOURCE_SHA` is a build variable. Disable Dockerfile ARG injection and
+enable all-value log redaction. Normal build-time values can become command
+arguments even in raw mode. Do not print API environment/configuration/log
+responses. Coolify manages its own protected runtime files; do not create local
+expanded dotenv files. Verify nonempty values, because Compose parsing creates
+empty variable entries before credentials are provisioned.
+
+`deploy/coolify-release.py` enforces raw mode, runtime-only secret flags, exact
+published branch/SHA, disabled automatic/preview deploys and explicit custom
+Compose paths. Run it through
+`bao-exec --only COOLIFY_WIRE_TOKEN,COOLIFY_URL -- python3 deploy/coolify-release.py`
+with `--app`, `--branch` and `--sha` nonsecret arguments. `--postgres-only` provisions
+only storage before a final source pin. `--deployment` reads allowlisted status;
+`--receipts` returns only fixed nonsecret boundary/backup/restore receipt lines.
+Raw custom-start commands execute inside the builder: use relative
+`--env-file .env -f compose.yml` and the preserved host project directory;
+Coolify's automatically injected host env-file path is inaccessible there.
 
 PostgreSQL init creates separate NOSUPERUSER/NOCREATEDB/NOCREATEROLE identities.
 The migrator alone gets schema ownership and `RUN_MIGRATIONS=true`. It exits
