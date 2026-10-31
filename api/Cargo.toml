@@ -1,0 +1,25 @@
+[package]
+name = "wallet-security-api"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+axum = "0.8"
+tokio = { version = "1", features = ["full"] }
+sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "postgres", "uuid", "chrono", "json", "migrate"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { version = "1", features = ["v4", "serde"] }
+rand = "0.8"
+sha2 = "0.10"
+ripemd = "0.1"
+k256 = { version = "0.13", features = ["ecdsa"] }
+bech32 = "0.9"
+base64 = "0.22"
+hex = "0.4"
+anyhow = "1"
+tower-http = { version = "0.6", features = ["fs", "set-header", "limit"] }
+aes-gcm = "0.10"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
+hmac = "0.12"

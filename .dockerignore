@@ -1,0 +1,14 @@
+.git
+.env
+.env.*
+**/.env
+**/.env.*
+**/node_modules
+**/dist
+target
+**/target
+**/*.pem
+**/*.key
+**/*.dump
+**/backups
+**/receipts/private
