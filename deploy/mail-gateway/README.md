@@ -21,9 +21,10 @@ notification network at this phase. API/PG and the current worker stay off it.
 A later independently reviewed main overlay may attach only the worker while
 preserving its DB-private network and absence of a default route.
 
-The runtime base is the already pinned portal PostgreSQL Debian image for its
-OpenSSL/public CA/bare shell tooling; its database entrypoint is replaced. No
-PostgreSQL server starts and no database variables or volumes are configured.
+The runtime uses a digest-pinned Debian slim base with only the pinned portal
+image's OpenSSL libraries and the pinned Rust build image's public CA bundle
+copied as TLS tooling. It inherits
+no database image volumes or entrypoint, and no database variables/volumes exist.
 The image build is offline Rust 1.91 with no third-party crate dependency.
 
 `provision.py` runs from the workstation through only the authorized Coolify
@@ -37,7 +38,10 @@ in memory; only closed resource IDs/status/receipt formats are printed.
 
 The custom start executes `runtime-check.sh` in the authorized builder, whose
 Docker management interface is never mounted into gateway/probe workloads.
-It verifies actual immutable image ID/source label, UID, read-only root, no
+It verifies actual container source labels and binds its running image reference
+to a no-start create from the newly built tag on that same daemon. The receipt
+keeps the observed running reference separate from the built image config
+digest, without assuming the daemon uses one identifier type. It checks UID, read-only root, no
 published ports/mounts/capabilities/credentials/proxy, exact networks and no
 other attachments, then confirms current worker direct SMTP egress is denied.
 The owned probe runs with the same nonroot/read-only/capability/resource bounds,

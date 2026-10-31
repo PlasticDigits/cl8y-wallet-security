@@ -16,6 +16,10 @@ def app():
  return dict(name=m.NAME,git_repository=m.REPO,docker_compose_location=m.COMPOSE,
   environment={'uuid':m.ENVIRONMENT},destination={'uuid':m.DESTINATION})
 class Scope(unittest.TestCase):
+ def test_commands_fit_maximum_identifier_before_mutations(self):
+  build,start=m.commands('a'*32,SHA)
+  self.assertLessEqual(max(len(build.encode()),len(start.encode())),255)
+  self.assertNotIn('up -d',start)
  def test_refuses_portal_before_api_mutation(self):
   with patch.object(m,'api') as api:
    with self.assertRaisesRegex(RuntimeError,'portal_refused'):m.owned(m.PORTAL)

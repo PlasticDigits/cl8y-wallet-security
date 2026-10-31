@@ -45,6 +45,14 @@ def owned(app):
         raise RuntimeError('resource_scope_conflict')
     return d
 
+def commands(app, sha):
+    identifier(app)
+    if app == PORTAL or not re.fullmatch('[a-f0-9]{40}',sha): raise RuntimeError('command_identity_invalid')
+    build='timeout 55 docker compose --env-file .env -f deploy/mail-gateway/compose.yml build gateway'
+    start='timeout 65 bash deploy/mail-gateway/launch.sh '+app+' '+sha
+    if max(len(build.encode()),len(start.encode())) > 255: raise RuntimeError('command_bound')
+    return build,start
+
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--create', action='store_true')
@@ -61,6 +69,7 @@ def main():
     if a.create or not (a.deployment or a.receipts):
         if not a.sha or not re.fullmatch('[0-9a-f]{40}', a.sha) or not a.branch or not re.fullmatch('[a-zA-Z0-9_./-]{1,180}', a.branch):
             raise RuntimeError('source_pin_required')
+        commands(a.app or 'a'*32,a.sha)
         result = subprocess.run(['git','ls-remote',REPO,'refs/heads/'+a.branch],capture_output=True,text=True,timeout=20)
         if result.returncode or not result.stdout.startswith(a.sha+'\t'): raise RuntimeError('source_pin_mismatch')
     if a.create:
@@ -86,8 +95,8 @@ def main():
             logs=deployment.get('logs',[])
             if isinstance(logs,str): logs=json.loads(logs)
             if not isinstance(logs,list): raise RuntimeError('logs_shape_invalid')
-            patterns=[r'mail_gateway_preflight_pass uid=10001 no_default_route=true alias_private=true hostname_verified=true direct_mailu_denied=true other_targets_denied=true auth=false sends=0',
-                r'mail_gateway_runtime_pass source_sha=[a-f0-9]{40} image_id=sha256:[a-f0-9]{64} uid=10001 ports=0 mounts=0 credentials=false networks=2 worker_direct_egress_denied=true',
+            patterns=[r'mail_gateway_tls_window start_utc=[0-9]{8}T[0-9]{6}Z end_utc=[0-9]{8}T[0-9]{6}Z ehlo=cl8y-gateway-[0-9]{8}T[0-9]{6}Z-[a-f0-9]{8}', r'mail_gateway_preflight_pass uid=10001 no_default_route=true alias_private=true hostname_verified=true direct_mailu_denied=true other_targets_denied=true auth=false sends=0',
+                r'mail_gateway_runtime_pass source_sha=[a-f0-9]{40} running_image_ref=sha256:[a-f0-9]{64} built_config_digest=sha256:[a-f0-9]{64} uid=10001 ports=0 mounts=0 credentials=false networks=2 worker_direct_egress_denied=true',
                 r'mail_gateway_(?:preflight|runtime)_failed stage=(?:identity|routes|direct_denial|alias|tls|credentials|networks|worker_denial|tls_probe|receipt)']
             for item in logs:
                 if not isinstance(item,dict): continue
@@ -98,11 +107,10 @@ def main():
         else:
             print(json.dumps({'application_uuid':a.app,'deployment_uuid':a.deployment,'status':status}))
         return
+    build,start=commands(a.app,a.sha)
     envs=api('GET','/applications/'+a.app+'/envs')
     if any(x.get('key') != 'SOURCE_SHA' for x in envs): raise RuntimeError('unexpected_runtime_env')
     api('PATCH' if envs else 'POST','/applications/'+a.app+'/envs',dict(key='SOURCE_SHA',value=a.sha,is_buildtime=True,is_runtime=True,is_literal=True))
-    build='timeout 55 docker compose --env-file .env -f deploy/mail-gateway/compose.yml build gateway'
-    start=('timeout 30 docker compose --env-file .env -f deploy/mail-gateway/compose.yml --project-directory /data/coolify/applications/'+a.app+'/deploy/mail-gateway --project-name '+a.app+' up -d --no-build gateway && timeout 35 bash deploy/mail-gateway/runtime-check.sh '+a.sha)
     settings=dict(git_branch=a.branch,git_commit_sha=a.sha,is_raw_compose_deployment_enabled=True,
         is_preserve_repository_enabled=True,is_auto_deploy_enabled=False,is_preview_deployments_enabled=False,
         inject_build_args_to_dockerfile=False,include_coolify_default_variables=False,redact_all_env_values_in_logs=True,
@@ -110,7 +118,7 @@ def main():
     api('PATCH','/applications/'+a.app,settings)
     actual=owned(a.app)
     flags=actual.get('settings',{})
-    if not flags.get('is_raw_compose_deployment_enabled') or flags.get('inject_build_args_to_dockerfile') is not False or actual.get('docker_compose_custom_start_command') != start:
+    if not flags.get('is_raw_compose_deployment_enabled') or flags.get('inject_build_args_to_dockerfile') is not False or actual.get('docker_compose_custom_start_command') != start or actual.get('docker_compose_custom_build_command') != build:
         raise RuntimeError('raw_boundary_not_applied')
     result=api('POST','/deploy',{'uuid':a.app,'force':False})
     ids=[identifier(x.get('deployment_uuid')) for x in result.get('deployments',[])]

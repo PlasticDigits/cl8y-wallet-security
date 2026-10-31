@@ -17,7 +17,10 @@ stage=alias
 alias_ip=$(getent ahostsv4 mail.cl8y.com | awk 'NR==1 {print $1}')
 case "$alias_ip" in 10.*|172.1[6-9].*|172.2[0-9].*|172.3[01].*|192.168.*) ;; *) false;; esac
 stage=tls
-result=$(printf 'QUIT\r\n' | timeout 12 openssl s_client -starttls smtp -connect mail.cl8y.com:1587 -servername mail.cl8y.com -verify_hostname mail.cl8y.com -verify_return_error -brief 2>&1)
+marker=cl8y-gateway-$(date -u +%Y%m%dT%H%M%SZ)-$(od -An -N4 -tx1 /dev/urandom | tr -d ' \n')
+start_utc=$(date -u +%Y%m%dT%H%M%SZ)
+result=$(printf 'QUIT\r\n' | timeout 12 openssl s_client -starttls smtp -name "$marker" -CAfile /etc/ssl/certs/ca-certificates.crt -connect mail.cl8y.com:1587 -servername mail.cl8y.com -verify_hostname mail.cl8y.com -verify_return_error -brief 2>&1)
 [[ "$result" == *'Verification: OK'* ]]
 [[ "$result" == *'CONNECTION ESTABLISHED'* ]]
+printf 'mail_gateway_tls_window start_utc=%s end_utc=%s ehlo=%s\n' "$start_utc" "$(date -u +%Y%m%dT%H%M%SZ)" "$marker"
 printf '%s\n' 'mail_gateway_preflight_pass uid=10001 no_default_route=true alias_private=true hostname_verified=true direct_mailu_denied=true other_targets_denied=true auth=false sends=0'
