@@ -4,9 +4,9 @@ set -eu -o pipefail
 exec 2>/dev/null
 sha=$1
 mode=${2-}
+DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 [[ "$mode" = "" || "$mode" = topology-only ]]
 if [ "$mode" = topology-only ]; then
-  DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
   timeout 8 bash "$DIR/capture.sh"
 fi
 [[ "$sha" =~ ^[0-9a-f]{40}$ ]]
@@ -43,7 +43,7 @@ stage=credentials
 keys=$(docker inspect -f '{{range .Config.Env}}{{println (index (split . "=") 0)}}{{end}}' "$name")
 if printf '%s\n' "$keys" | grep -Eq 'TOKEN|PASSWORD|SECRET|CONTACT|DATABASE_URL'; then false; fi
 stage=network_names
-networks=$(docker inspect -f '{{range $k,$v := .NetworkSettings.Networks}}{{println $k}}{{end}}' "$name" | sort)
+networks=$(docker inspect -f '{{range $k,$v := .NetworkSettings.Networks}}{{println $k}}{{end}}' "$name" | bash "$DIR/normalize-network-names.sh")
 [ "$networks" = "$(printf '%s\n' wallet-security-mailu-outbound wallet-security-notification | sort)" ]
 stage=network_internal
 [ "$(docker network inspect -f '{{.Internal}}' wallet-security-notification)" = true ]

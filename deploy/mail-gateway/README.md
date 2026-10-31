@@ -118,3 +118,11 @@ newly owned gateway and stops it by ID, retaining its metadata. It never removes
 that container or another service. Success and failure both deliberately end
 with a failed build so no normal release continuation runs. Restore normal
 configuration separately, without deploying, after collecting the evidence.
+
+Docker inspect appends an outer newline even when a range template already uses
+`println`. Sorting that extra empty separator moves it to the beginning, where
+shell command substitution retains it and an exact-name comparison fails.
+`normalize-network-names.sh` removes only truly empty separator lines before
+sorting. It preserves every nonempty name, duplicate, prefix and whitespace-only
+line; all identity, exact-set, internal, membership and resource guards remain.
+The formatter fix is verification-only and does not authorize a network change.
