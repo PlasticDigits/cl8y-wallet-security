@@ -49,6 +49,64 @@ fn now() -> u64 {
         .unwrap_or_default()
         .as_secs()
 }
+fn capability_deadline(
+    expires: u64,
+    wall: u64,
+    start: Instant,
+) -> Result<Instant, Box<dyn std::error::Error>> {
+    let lifetime = expires
+        .checked_sub(wall)
+        .ok_or("expired export capability")?;
+    if lifetime == 0 || lifetime > 600 {
+        return Err("export capability lifetime invalid".into());
+    }
+    Ok(start + Duration::from_secs(lifetime))
+}
+fn live(expires: u64, wall: u64, deadline: Instant, mono: Instant) -> bool {
+    wall < expires && mono < deadline
+}
+fn hash_cipher(
+    file: &mut File,
+    size: u64,
+    expires: u64,
+    deadline: Instant,
+) -> Result<String, Box<dyn std::error::Error>> {
+    if size < 22 || size > MAX_BYTES {
+        return Err("cipher size invalid".into());
+    }
+    if !live(expires, now(), deadline, Instant::now()) {
+        return Err("cipher validation deadline".into());
+    }
+    let mut magic = [0u8; 22];
+    file.read_exact(&mut magic)?;
+    if &magic != b"age-encryption.org/v1\n" {
+        return Err("cipher envelope missing".into());
+    }
+    let mut hasher = Sha256::new();
+    hasher.update(magic);
+    let mut buffer = [0u8; 65536];
+    let mut remaining = size - 22;
+    while remaining > 0 {
+        if !live(expires, now(), deadline, Instant::now()) {
+            return Err("cipher validation deadline".into());
+        }
+        let amount = remaining.min(buffer.len() as u64) as usize;
+        let count = file.read(&mut buffer[..amount])?;
+        if count == 0 {
+            return Err("cipher truncated while validating".into());
+        }
+        hasher.update(&buffer[..count]);
+        remaining -= count as u64;
+    }
+    if !live(expires, now(), deadline, Instant::now()) {
+        return Err("cipher validation deadline".into());
+    }
+    let mut extra = [0u8; 1];
+    if file.read(&mut extra)? != 0 {
+        return Err("cipher grew while validating".into());
+    }
+    Ok(format!("{:x}", hasher.finalize()))
+}
 fn valid_hex(value: &str) -> bool {
     value.len() == 64
         && value
@@ -59,10 +117,11 @@ fn write_bounded(
     stream: &mut TcpStream,
     mut data: &[u8],
     deadline: Instant,
+    expires: u64,
 ) -> std::io::Result<()> {
     while !data.is_empty() {
         let remaining = deadline.saturating_duration_since(Instant::now());
-        if remaining.is_zero() {
+        if remaining.is_zero() || now() >= expires {
             return Err(std::io::ErrorKind::TimedOut.into());
         }
         stream.set_write_timeout(Some(remaining.min(Duration::from_secs(1))))?;
@@ -81,9 +140,9 @@ fn write_bounded(
     }
     Ok(())
 }
-fn response(stream: &mut TcpStream, status: &str, deadline: Instant) {
+fn response(stream: &mut TcpStream, status: &str, deadline: Instant, expires: u64) {
     let bytes=format!("HTTP/1.1 {status}\r\nContent-Length: 0\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n");
-    let _ = write_bounded(stream, bytes.as_bytes(), deadline);
+    let _ = write_bounded(stream, bytes.as_bytes(), deadline, expires);
 }
 fn authorized(header: &str, token: &[u8]) -> bool {
     let mut auth = None;
@@ -116,15 +175,16 @@ fn serve(
     token: Arc<Vec<u8>>,
     snapshot: Arc<Snapshot>,
     expires: u64,
+    global_deadline: Instant,
 ) {
     let _ = stream.set_read_timeout(Some(Duration::from_secs(1)));
     let _ = stream.set_write_timeout(Some(Duration::from_secs(10)));
-    let deadline = Instant::now() + Duration::from_secs(120);
-    let header_deadline = Instant::now() + Duration::from_secs(5);
+    let deadline = (Instant::now() + Duration::from_secs(120)).min(global_deadline);
+    let header_deadline = (Instant::now() + Duration::from_secs(5)).min(deadline);
     let mut bytes = Vec::with_capacity(1024);
     while bytes.len() < 8192 && !bytes.ends_with(b"\r\n\r\n") {
         let budget = header_deadline.saturating_duration_since(Instant::now());
-        if budget.is_zero() {
+        if budget.is_zero() || now() >= expires {
             return;
         }
         if stream
@@ -140,11 +200,16 @@ fn serve(
         bytes.push(byte[0]);
     }
     if !bytes.ends_with(b"\r\n\r\n") {
-        response(&mut stream, "431 Request Header Fields Too Large", deadline);
+        response(
+            &mut stream,
+            "431 Request Header Fields Too Large",
+            deadline,
+            expires,
+        );
         return;
     }
     let Ok(header) = std::str::from_utf8(&bytes) else {
-        response(&mut stream, "400 Bad Request", deadline);
+        response(&mut stream, "400 Bad Request", deadline, expires);
         return;
     };
     let line = header.split("\r\n").next().unwrap_or("");
@@ -157,6 +222,7 @@ fn serve(
                 "503 Service Unavailable"
             },
             deadline,
+            expires,
         );
         return;
     }
@@ -164,20 +230,20 @@ fn serve(
         || peer.ip() != IpAddr::V4(Ipv4Addr::new(10, 8, 0, 2))
         || !authorized(header, &token)
     {
-        response(&mut stream, "403 Forbidden", deadline);
+        response(&mut stream, "403 Forbidden", deadline, expires);
         return;
     }
     if line != "GET /cipher HTTP/1.1" && line != "HEAD /cipher HTTP/1.1" {
-        response(&mut stream, "404 Not Found", deadline);
+        response(&mut stream, "404 Not Found", deadline, expires);
         return;
     }
     let Some(mut file) = snapshot.open() else {
-        response(&mut stream, "409 Conflict", deadline);
+        response(&mut stream, "409 Conflict", deadline, expires);
         return;
     };
     let size = snapshot.size;
     let headers=format!("HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Length: {size}\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n");
-    if write_bounded(&mut stream, headers.as_bytes(), deadline).is_err() {
+    if write_bounded(&mut stream, headers.as_bytes(), deadline, expires).is_err() {
         return;
     }
     if line.starts_with("HEAD ") {
@@ -196,7 +262,7 @@ fn serve(
         if count == 0 {
             return;
         }
-        if write_bounded(&mut stream, &buffer[..count], deadline).is_err() {
+        if write_bounded(&mut stream, &buffer[..count], deadline, expires).is_err() {
             return;
         }
         remaining -= count as u64;
@@ -224,14 +290,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Err("invalid cipher digest".into());
     }
     let expires: u64 = env::var("EXPORT_EXPIRES_UNIX")?.parse()?;
-    let issued_at = now();
-    let lifetime = expires
-        .checked_sub(issued_at)
-        .ok_or("expired export capability")?;
-    if lifetime == 0 || lifetime > 600 {
-        return Err("export capability lifetime invalid".into());
-    }
-    let hard_deadline = Instant::now() + Duration::from_secs(lifetime);
+    let hard_deadline = capability_deadline(expires, now(), Instant::now())?;
     let startup_deadline = (Instant::now() + Duration::from_secs(30)).min(hard_deadline);
     let filename = env::var("EXPORT_FILENAME")?;
     let prefix = "wallet-security-";
@@ -265,32 +324,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     if size == 0 || size > MAX_BYTES {
         return Err("cipher size invalid".into());
     }
-    let mut magic = [0u8; 22];
-    file.read_exact(&mut magic)?;
-    if &magic != b"age-encryption.org/v1\n" {
-        return Err("cipher envelope missing".into());
-    }
-    let mut hasher = Sha256::new();
-    hasher.update(magic);
-    let mut buffer = [0u8; 65536];
-    let mut remaining = size - magic.len() as u64;
-    while remaining > 0 {
-        if Instant::now() >= startup_deadline || now() >= expires {
-            return Err("cipher validation deadline".into());
-        }
-        let amount = remaining.min(buffer.len() as u64) as usize;
-        let count = file.read(&mut buffer[..amount])?;
-        if count == 0 {
-            return Err("cipher truncated while validating".into());
-        }
-        hasher.update(&buffer[..count]);
-        remaining -= count as u64;
-    }
-    let mut extra = [0u8; 1];
-    if file.read(&mut extra)? != 0 {
-        return Err("cipher grew while validating".into());
-    }
-    if format!("{:x}", hasher.finalize()) != expected {
+    if hash_cipher(&mut file, size, expires, startup_deadline)? != expected {
         return Err("cipher digest differs".into());
     }
     let after = file.metadata()?;
@@ -324,7 +358,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let snapshot = snapshot.clone();
                 let count = active.clone();
                 std::thread::spawn(move || {
-                    serve(stream, peer, token, snapshot, expires);
+                    serve(stream, peer, token, snapshot, expires, hard_deadline);
                     count.fetch_sub(1, Ordering::SeqCst);
                 });
             }
@@ -397,6 +431,7 @@ mod wire_tests {
                 token,
                 snap,
                 now() + 30,
+                Instant::now() + Duration::from_secs(30),
             );
         });
         let mut client = TcpStream::connect(addr).unwrap();
@@ -456,11 +491,53 @@ mod deadline_tests {
             let (mut stream, _) = listener.accept().unwrap();
             let started = Instant::now();
             let data = vec![42u8; 8 * 1024 * 1024];
-            let result = write_bounded(&mut stream, &data, started + Duration::from_millis(80));
+            let result = write_bounded(
+                &mut stream,
+                &data,
+                started + Duration::from_millis(80),
+                now() + 30,
+            );
             assert!(result.is_err());
             assert!(started.elapsed() < Duration::from_secs(1));
         });
         let _client = TcpStream::connect(addr).unwrap();
         thread.join().unwrap();
+    }
+}
+
+#[cfg(test)]
+mod startup_bound_tests {
+    use super::*;
+    #[test]
+    fn expired_and_rollback_cannot_extend_cap() {
+        let start = Instant::now();
+        assert!(capability_deadline(100, 100, start).is_err());
+        assert!(capability_deadline(701, 100, start).is_err());
+        let cap = capability_deadline(200, 100, start).unwrap();
+        assert!(!live(200, 1, cap, cap + Duration::from_nanos(1)));
+        assert!(!live(200, 201, cap, start));
+    }
+    #[test]
+    fn declared_size_and_startup_expiry_are_enforced() {
+        let path = env::temp_dir().join(format!("wallet-export-growth-{}", now()));
+        let data = b"age-encryption.org/v1\nowned-growth-case";
+        std::fs::write(&path, data).unwrap();
+        let mut file = open_fixed(path.to_str().unwrap()).unwrap();
+        assert!(hash_cipher(
+            &mut file,
+            data.len() as u64 - 1,
+            now() + 30,
+            Instant::now() + Duration::from_secs(1)
+        )
+        .is_err());
+        let mut file = open_fixed(path.to_str().unwrap()).unwrap();
+        assert!(hash_cipher(
+            &mut file,
+            data.len() as u64,
+            0,
+            Instant::now() + Duration::from_secs(1)
+        )
+        .is_err());
+        std::fs::remove_file(path).unwrap();
     }
 }
