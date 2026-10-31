@@ -2,6 +2,7 @@
 """Provision only a separate no-network public-key backup sealer resource."""
 import argparse
 import base64
+import hashlib
 import json
 import re
 from pathlib import Path
@@ -105,6 +106,9 @@ def main():
     # Nothing can POST /start before complete actual validation passes.
     validate_resource(actual, config['sealer_uuid'], expected_name, compose, context, args)
     config.update(portal_app_uuid=args.portal_app, project_uuid=args.project, server_uuid=args.server,
+                  environment_uuid=args.environment, destination_uuid=args.destination,
+                  resource_context=context,
+                  desired_compose_sha256=hashlib.sha256(json.dumps(compose, sort_keys=True, separators=(',', ':')).encode()).hexdigest(),
                   sealer_source_sha=args.image_source, sealer_image_manifest=args.image_digest,
                   input_backup_volume=input_volume, sealed_backup_volume=output_volume,
                   age_public_recipient=recipient, sealer_name=expected_name,

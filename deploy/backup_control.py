@@ -95,3 +95,24 @@ def safe_main(function):
     except Exception as error:
         # Never interpolate exception bodies/SDK responses: they may echo material.
         raise SystemExit('backup_operation_failed ' + type(error).__name__) from None
+
+
+def validate_sealer(api, config):
+    import hashlib
+    import yaml
+    portal = api.call('GET', '/applications/' + identifier(config['portal_app_uuid']))
+    if portal.get('name') != 'cl8y-wallet-security':
+        raise Failure('portal_identity_changed')
+    service = api.call('GET', '/services/' + identifier(config['sealer_uuid']))
+    destination = service.get('destination') or {}
+    server = destination.get('server') or {}
+    if (service.get('name') != config['sealer_name']
+            or any(service.get(key) != value for key, value in config['resource_context'].items())
+            or destination.get('uuid') != config['destination_uuid']
+            or server.get('uuid') != config['server_uuid']):
+        raise Failure('sealer_resource_context_changed')
+    compose = yaml.safe_load(service.get('docker_compose_raw') or '')
+    digest = hashlib.sha256(json.dumps(compose, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+    if digest != config['desired_compose_sha256']:
+        raise Failure('sealer_actual_compose_changed')
+    return service
