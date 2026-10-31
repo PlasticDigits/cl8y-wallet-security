@@ -73,8 +73,9 @@ def inspector_guard(api, config, resource, expected_build='/bin/false'):
 def observe(api,config,exporter,fence):
     observer=api.call('GET','/applications/'+identifier(config['inspector_app_uuid']))
     inspector_guard(api,config,observer)
-    url='https://git.cl8y.com/code/cl8y-wallet-security/raw/commit/'+config['inspector_source_sha']+'/deploy/cipher-export/inspect.sh'
-    command="timeout 60 bash -o pipefail -c 'curl -fsS --max-time 10 "+url+' | bash -s -- '+identifier(exporter)+"'"
+    # Literal reviewed imported-source hook: no pipe/operator parsing and no
+    # dependency on the .git directory that Coolify strips from build artifacts.
+    command='timeout 60 bash ./deploy/cipher-export/inspect.sh '+identifier(exporter)
     if len(command)>255:raise Failure('operator_observation_command_too_long')
     fence();prefix='/applications/'+config['inspector_app_uuid']
     api.call('PATCH',prefix,{'docker_compose_custom_build_command':command})
