@@ -1,8 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 umask 077
-export PGDATABASE="$DATABASE_URL"
-unset DATABASE_URL
+. /app/deploy/libpq.sh
 mkdir -p /backups
 while true; do
   stamp=$(date -u +%Y%m%dT%H%M%SZ)
