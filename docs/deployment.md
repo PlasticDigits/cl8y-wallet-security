@@ -10,9 +10,12 @@ them. A healthy deployment does not demonstrate chain protection or delivery.
 
 ## Build and release
 
-Use the public Git repository with Coolify's Docker Compose build pack and
-`/compose.yml`. Set the exact reviewed Git SHA, disable automatic/preview deploys,
-and map only service `api` to `https://security.cl8y.com:8080`. Require valid TLS
+Use the public Git repository with Coolify's Docker Compose build pack,
+**Raw (deploy file as-is)** enabled, and `/compose.yml`. Normal mode can attach
+all networks and inject every secret into each container; it is unsuitable for
+this privilege boundary. Set the exact reviewed Git SHA and disable automatic/
+preview deploys. The explicit Traefik labels route only service `api` to
+`https://security.cl8y.com:8080` on the existing external `coolify` proxy network. Require valid TLS
 and HTTP-to-HTTPS redirect. The frontend is built with `npm ci` and Rust with
 `cargo build --locked`; upstream build/runtime images are digest pinned.
 The runtime runs as uid/gid 10001 without capabilities, with a read-only root
@@ -52,6 +55,11 @@ schema migration versions and non-sensitive owned-sandbox counts, then drop the
 scratch database. Never run a restore drill against the serving database. Record
 only timestamps, hashes, migration versions, result booleans and counts; do not
 publish dump contents, environment/config expansions or contact information.
+The one-shot `restore-drill` service performs archive hash/catalogue checks and
+restores into the dedicated, newly created `wallet_security_restore_drill`
+database, reports only version/table-count/hash, and drops it on exit. A stale
+scratch database causes a failure rather than an overwrite. Its bootstrap
+credential never reaches API/worker. Preserve the job exit result as evidence.
 
 Rollback an application to the previous exact image/SHA only if its schema is
 compatible. Do not automatically reverse migrations. For incompatible changes,
@@ -68,6 +76,10 @@ restore results; and a bounded owned-sandbox smoke test with no real recipients
 or mainnet transactions. Inspect actual Coolify-generated networking because
 platform parsing may attach extra networks. Restrict Coolify administration to
 the existing VPN and its authorized credential path. Worker egress remains
-internal while providers/chain are unconfigured; review explicit endpoint
-allowlists and egress before enabling either feature. Keep independent final
+internal while providers/chain are unconfigured. Before enabling either feature,
+provision a dedicated outbound gateway permitting only the lead's reviewed
+finalized RPC and provider endpoints; attach worker to that gateway's internal
+network (no shared application network or published ports), inject provider
+credentials only through Coolify, and verify both permitted and denied egress.
+Do not merely attach the worker to the shared `coolify` network. Keep independent final
 security/deployment acceptance open until these checks pass on the final SHA.
