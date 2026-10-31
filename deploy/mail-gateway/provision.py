@@ -48,8 +48,9 @@ def owned(app):
 def commands(app, sha):
     identifier(app)
     if app == PORTAL or not re.fullmatch('[a-f0-9]{40}',sha): raise RuntimeError('command_identity_invalid')
-    build='set -o pipefail; curl --proto =https -fsSm 10 https://git.cl8y.com/code/cl8y-wallet-security/raw/commit/'+sha+'/deploy/mail-gateway/build.sh | timeout 55 bash -s -- '+sha
+    build='timeout 55 bash deploy/mail-gateway/build.sh '+sha
     start='timeout 65 bash deploy/mail-gateway/launch.sh '+app+' '+sha
+    if any(re.search(r'[^a-zA-Z0-9._/ :=-]',command) for command in (build,start)): raise RuntimeError('command_token_refused')
     if max(len(build.encode()),len(start.encode())) > 255: raise RuntimeError('command_bound')
     return build,start
 
@@ -95,7 +96,7 @@ def main():
             logs=deployment.get('logs',[])
             if isinstance(logs,str): logs=json.loads(logs)
             if not isinstance(logs,list): raise RuntimeError('logs_shape_invalid')
-            patterns=[r'mail_gateway_tls_window start_utc=[0-9]{8}T[0-9]{6}Z end_utc=[0-9]{8}T[0-9]{6}Z ehlo=cl8y-gateway-[0-9]{8}T[0-9]{6}Z-[a-f0-9]{8}', r'mail_gateway_preflight_pass uid=10001 no_default_route=true alias_private=true hostname_verified=true direct_mailu_denied=true other_targets_denied=true auth=false sends=0',
+            patterns=[r'mail_gateway_build_hook_entered', r'mail_gateway_image_inputs_verified', r'mail_gateway_tls_window start_utc=[0-9]{8}T[0-9]{6}Z end_utc=[0-9]{8}T[0-9]{6}Z ehlo=cl8y-gateway-[0-9]{8}T[0-9]{6}Z-[a-f0-9]{8}', r'mail_gateway_preflight_pass uid=10001 no_default_route=true alias_private=true hostname_verified=true direct_mailu_denied=true other_targets_denied=true auth=false sends=0',
                 r'mail_gateway_runtime_pass source_sha=[a-f0-9]{40} running_image_ref=sha256:[a-f0-9]{64} built_config_digest=sha256:[a-f0-9]{64} uid=10001 ports=0 mounts=0 credentials=false networks=2 memory_bytes=67108864 nano_cpus=100000000 pids=16 nnp=true worker_direct_egress_denied=true',
                 r'mail_gateway_(?:preflight|runtime)_failed stage=(?:identity|routes|direct_denial|alias|tls|credentials|networks|resource_bounds|worker_denial|tls_probe|receipt)']
             for item in logs:
