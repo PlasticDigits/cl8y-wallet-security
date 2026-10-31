@@ -83,6 +83,22 @@ if [ "$status" = 0 ] && grep -Fxq 'security_api|5' <<< "$result"; then sql_verif
 if [[ "$result" == *'password authentication failed'* ]]; then password_auth_failed=true; fi
 unset result
 printf 'ACTUAL_API_SQL uid_10001=%s role_and_migration5=%s password_auth_failed=%s\n' "$probe_uid" "$sql_verified" "$password_auth_failed"
+pg_format='{{with index .NetworkSettings.Networks "'"$private"'"}}{{.IPAddress}}{{end}}'
+owned_pg_ip=$(docker inspect -f "$pg_format" "$app-postgres-1")
+set +e
+both_result=$(timeout 20 docker run --rm --read-only --tmpfs /tmp:size=16m,mode=1777 --cap-drop ALL --security-opt no-new-privileges:true --network "$private" --network coolify --user "$configured_user" -e DATABASE_URL -e PGCONNECT_TIMEOUT --entrypoint /bin/bash "$image" -c 'getent ahostsv4 postgres; . /app/deploy/libpq.sh; exec psql -X -qAt -v ON_ERROR_STOP=1 -c "SELECT current_user,(SELECT count(*) FROM _sqlx_migrations WHERE success)"' 2>&1)
+both_status=$?
+set -e
+both_verified=false; both_auth_failure=false; owned_pg_seen=false; other_pg_seen=false
+if [ "$both_status" = 0 ] && grep -Fxq 'security_api|5' <<< "$both_result"; then both_verified=true; fi
+[[ "$both_result" == *'password authentication failed'* ]] && both_auth_failure=true
+while read -r resolved_ip record_type _; do
+  if [[ "$resolved_ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] && [[ "$record_type" =~ ^(STREAM|DGRAM|RAW)$ ]]; then
+    if [ "$resolved_ip" = "$owned_pg_ip" ]; then owned_pg_seen=true; else other_pg_seen=true; fi
+  fi
+done <<< "$both_result"
+unset both_result
+printf 'TWO_NETWORK_API_SQL role_and_migration5=%s password_auth_failed=%s owned_pg_seen=%s other_pg_seen=%s\n' "$both_verified" "$both_auth_failure" "$owned_pg_seen" "$other_pg_seen"
 if [ "$sql_verified" = false ] && [ -n "$pg_api_password" ]; then
   DATABASE_URL="postgresql://security_api:${pg_api_password}@postgres:5432/wallet_security"
   export DATABASE_URL
