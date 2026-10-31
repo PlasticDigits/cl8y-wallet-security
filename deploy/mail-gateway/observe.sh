@@ -13,6 +13,10 @@ num() { [[ "$1" =~ ^-?[0-9]{1,20}$ ]]; }
 hexid() { [[ "$1" =~ ^[a-f0-9]{64}$ ]]; }
 declare -A networks=()
 gateway_id=''
+sealer_id=''
+self_id=$(hostname)
+[[ "$self_id" =~ ^[a-f0-9]{12,64}$ ]] || self_id=''
+declare -A known_members=()
 container() {
   local role=$1 name=$2 id image user running mode memory cpu pids ro caps security nnp names item mounts mname target rw type
   if ! id=$(docker inspect -f '{{.Id}}' "$name"); then
@@ -25,6 +29,10 @@ container() {
     [ "$(docker inspect -f '{{index .Config.Labels "com.cl8y.scope"}}' "$name")" = wallet-security-mail-gateway ]
     [ "$(docker inspect -f '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$name")" = 44a2d3604b2051278aafcfa80fa4e19f4eb6c1d5 ]
     gateway_id=$id
+    known_members[$id]=gateway
+  else
+    sealer_id=$id
+    known_members[$id]=sealer
   fi
   user=$(docker inspect -f '{{.Config.User}}' "$name"); safe "$user"
   running=$(docker inspect -f '{{.State.Running}}' "$name"); [[ "$running" = true || "$running" = false ]]
@@ -72,11 +80,21 @@ for id in "${!networks[@]}"; do
   internal=$(docker network inspect -f '{{.Internal}}' "$id"); [[ "$internal" = true || "$internal" = false ]]
   count=$(docker network inspect -f '{{len .Containers}}' "$id"); num "$count"
   printf '{"record":"network","name":"%s","id":"%s","driver":"%s","internal":%s,"members":%s}\n' "$name" "$id" "$driver" "$internal" "$count"
+  other=0; self_helper=0
   while IFS='|' read -r cid cname; do
     [ -n "$cid" ] || continue
-    hexid "$cid"; safe "$cname"
-    printf '{"record":"network_member","network_id":"%s","id":"%s","name":"%s"}\n' "$id" "$cid" "$cname"
+    hexid "$cid"
+    kind=''
+    if [ "$cid" = "$gateway_id" ]; then kind=gateway; cname=$GATEWAY
+    elif [ "$cid" = "$sealer_id" ]; then kind=sealer; cname=$SEALER
+    elif [ "$cname" = coolify-proxy ]; then kind=managed_proxy
+    elif [ -n "$self_id" ] && [[ "$cid" == "$self_id"* ]]; then self_helper=$((self_helper+1)); continue
+    else other=$((other+1)); continue
+    fi
+    known_members[$cid]=$kind
+    printf '{"record":"network_member","network_id":"%s","id":"%s","name":"%s","member_kind":"%s"}\n' "$id" "$cid" "$cname" "$kind"
   done < <(docker network inspect -f '{{range $id,$item := .Containers}}{{printf "%s|%s\n" $id $item.Name}}{{end}}' "$id")
+  printf '{"record":"network_redacted_members","network_id":"%s","self_observer_helpers":%s,"other_members":%s}\n' "$id" "$self_helper" "$other"
 done
 # Finite, project-filtered event metadata can help reconstruct a removed gateway.
 now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
@@ -85,7 +103,12 @@ while IFS='|' read -r action nid name cid stamp; do
   [ -n "$action" ] || continue
   case "$action" in create|connect|disconnect|destroy) ;; *) continue;; esac
   hexid "$nid"; safe "$name"; num "$stamp"; [ -z "$cid" ] || hexid "$cid"
-  printf '{"record":"owned_network_event","action":"%s","network_id":"%s","name":"%s","container_id":"%s","time":%s}\n' "$action" "$nid" "$name" "$cid" "$stamp"
+  kind=none
+  if [ -n "$cid" ]; then
+    if [ -n "${known_members[$cid]+present}" ]; then kind=${known_members[$cid]}
+    else cid=''; kind=other_redacted; fi
+  fi
+  printf '{"record":"owned_network_event","action":"%s","network_id":"%s","name":"%s","container_id":"%s","container_kind":"%s","time":%s}\n' "$action" "$nid" "$name" "$cid" "$kind" "$stamp"
 done <<< "$events"
 printf '%s\n' observer_read_only_complete_service_changes=false
 exit 1

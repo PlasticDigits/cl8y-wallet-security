@@ -84,9 +84,12 @@ preserves runtime env and the start hook, reads only fixed gateway and
 `seal-3nolvrgyhudkv3itihuyuim9` metadata, and deliberately exits 1 before any
 application stop/start step. There are no Docker run/create/start/stop/remove,
 filesystem-content or SMTP operations. Only selected image/user/mount metadata,
-HostConfig, gateway network names/IDs/flags/members/aliases, finite owned-project
+HostConfig, gateway network names/IDs/flags/aliases and only fixed gateway/sealer/managed-proxy
+member identities, plus redacted other/self-observer counts and finite owned-project
 network events and environment **names** are emitted. Environment values and
-mount source paths are never emitted. If containment removed the gateway, its
+mount source paths are never emitted. Unrelated network member names/IDs and
+unknown event member IDs are redacted. No extra workload is inspected to
+classify the observer itself; its own namespace hostname is only a count hint. If containment removed the gateway, its
 absence is explicit; surviving owned networks/events do not imply a runtime
 pass. The receiver accepts only closed typed records. The gateway image source
 remains the fixed reviewed `44a2d36...`; observer Git source is a separate pin.

@@ -64,11 +64,15 @@ def observer_record(line):
       'env_name':({'record','role','name'},),
       'gateway_attachment':({'record','name','id','aliases_csv'},),
       'network':({'record','name','id','driver','internal','members'},),
-      'network_member':({'record','network_id','id','name'},),
-      'owned_network_event':({'record','action','network_id','name','container_id','time'},),
+      'network_member':({'record','network_id','id','name','member_kind'},),
+      'network_redacted_members':({'record','network_id','self_observer_helpers','other_members'},),
+      'owned_network_event':({'record','action','network_id','name','container_id','container_kind','time'},),
     }
     if row.get('record') not in schemas or set(row) not in schemas[row['record']]: return False
     if 'role' in row and row['role'] not in ('gateway','sealer'): return False
+    if row['record']=='network_member' and row.get('name') != {'gateway':'wallet-security-mail-gateway','sealer':'seal-3nolvrgyhudkv3itihuyuim9','managed_proxy':'coolify-proxy'}.get(row.get('member_kind')):return False
+    if row['record']=='owned_network_event' and row.get('container_kind') not in ('none','gateway','sealer','managed_proxy','other_redacted'):return False
+    if row['record']=='owned_network_event' and row.get('container_kind') in ('none','other_redacted') and row.get('container_id')!='':return False
     if row['record']=='env_name' and not re.fullmatch('[a-zA-Z_][a-zA-Z0-9_]{0,127}',row.get('name','')):return False
     for key in ('id','network_id','container_id'):
         if key in row and (not isinstance(row[key],str) or not re.fullmatch('[a-f0-9]{64}|',row[key])):return False
