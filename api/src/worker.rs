@@ -9,6 +9,9 @@ pub fn backoff(attempt: i32) -> i64 {
         .saturating_mul(2_i64.pow(attempt.clamp(0, 10) as u32))
         .min(3600)
 }
+pub fn uncertain_delivery(kind: &str, code: &str) -> bool {
+    kind == "telegram" && ["transport_failure", "provider_invalid_response"].contains(&code)
+}
 async fn dispatch(app: &App) -> anyhow::Result<()> {
     // One claim immediately before each send; no serially waiting leased batch.
     // Telegram has no idempotency key: an expired in-flight send is visible uncertainty,
@@ -26,6 +29,10 @@ async fn dispatch(app: &App) -> anyhow::Result<()> {
         let attempts: i32 = row.get("attempts");
         let data=sqlx::query("SELECT c.kind,c.encrypted_destination,e.action,e.wallet,e.token,e.proposed_at,e.executable_at FROM contacts c JOIN security_events e ON e.id=$2 WHERE c.id=$1")
   .bind(contact).bind(event).fetch_one(&app.db).await?;
+        let current:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM notification_outbox WHERE id=$1 AND lease_id=$2 AND state='sending' AND locked_until>now()+interval '30 seconds')").bind(id).bind(lease).fetch_one(&app.db).await?;
+        if !current {
+            continue;
+        }
         let result=async {
    let destination=notifications::decrypt(app,&data.get::<Vec<u8>,_>("encrypted_destination")).map_err(|_|"contact_decrypt_failed")?;
    let deadline:DateTime<Utc>=data.get("executable_at");
@@ -47,7 +54,7 @@ async fn dispatch(app: &App) -> anyhow::Result<()> {
                 let blocked =
                     code == "provider_unconfigured" || code == "sandbox_destination_not_allowed";
                 let failed = (!blocked && attempts >= 8)
-                    || (data.get::<String, _>("kind") == "telegram" && code == "transport_failure")
+                    || uncertain_delivery(&data.get::<String, _>("kind"), code)
                     || [
                         "verification_expired",
                         "provider_rejected",
@@ -56,7 +63,7 @@ async fn dispatch(app: &App) -> anyhow::Result<()> {
                     ]
                     .contains(&code);
                 sqlx::query("UPDATE notification_outbox SET state=$2,last_error_code=$3,locked_until=NULL,next_attempt_at=now()+make_interval(secs=>$4),attempts=CASE WHEN $5 THEN attempts-1 ELSE attempts END WHERE id=$1 AND lease_id=$6 AND state='sending'")
-    .bind(id).bind(if failed{"failed"}else if blocked{"blocked"}else{"pending"}).bind(code).bind(if blocked{300.0}else{backoff(attempts) as f64}).bind(blocked).bind(lease).execute(&app.db).await?;
+    .bind(id).bind(if failed{"failed"}else if blocked{"blocked"}else{"pending"}).bind(if uncertain_delivery(&data.get::<String,_>("kind"),code){"delivery_uncertain"}else{code}).bind(if blocked{300.0}else{backoff(attempts) as f64}).bind(blocked).bind(lease).execute(&app.db).await?;
             }
         }
     }
@@ -137,6 +144,10 @@ mod tests {
     use super::*;
     #[test]
     fn retry_is_bounded() {
+        assert!(uncertain_delivery("telegram", "transport_failure"));
+        assert!(uncertain_delivery("telegram", "provider_invalid_response"));
+        assert!(!uncertain_delivery("email", "provider_invalid_response"));
+        assert!(!uncertain_delivery("telegram", "provider_rate_limit"));
         assert_eq!(backoff(1), 30);
         assert_eq!(backoff(99), 3600);
     }

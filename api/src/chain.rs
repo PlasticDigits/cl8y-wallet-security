@@ -54,7 +54,7 @@ impl Registry {
             "invalid registry bounds"
         );
         anyhow::ensure!(
-            cfg.abi_sha.len() == 40 && cfg.abi_sha.bytes().all(|b| b.is_ascii_hexdigit()),
+            cfg.abi_sha == "2d70d43c651ecd4491c0736c89ae2975ee825686",
             "reviewed ABI source SHA required"
         );
         for c in cfg.contracts.iter().chain(std::iter::once(&cfg.controller)) {
