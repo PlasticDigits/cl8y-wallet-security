@@ -77,6 +77,7 @@ def s3_client(storage):
         aws_access_key_id=storage['key'], aws_secret_access_key=storage['secret'],
         config=Config(signature_version='s3v4', connect_timeout=10, read_timeout=30,
                       retries={'total_max_attempts': 1}, proxies={},
+                      request_checksum_calculation='when_required', response_checksum_validation='when_required',
                       s3={'addressing_style': 'path' if storage.get('use_path_style_endpoint', True) else 'virtual'}))
 
 

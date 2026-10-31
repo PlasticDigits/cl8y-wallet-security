@@ -147,7 +147,7 @@ def cleanup_export(api, config, persist):
     persist()
 
 
-def fetch_cipher(api, config, record, persist):
+def fetch_cipher(api, config, record, persist, probe_only=False):
     # Never take over an occupied private listener belonging to another role.
     try:
         with socket.create_connection(('10.8.0.1', 18188), timeout=2): pass
@@ -195,6 +195,8 @@ def fetch_cipher(api, config, record, persist):
             except (urllib.error.URLError, OSError):
                 if time.monotonic() > deadline: raise Failure('private_export_not_ready') from None
                 time.sleep(1)
+        if probe_only:
+            return None
         request = urllib.request.Request(endpoint, headers={'Authorization': 'Bearer ' + token})
         with opener.open(request, timeout=30) as response:
             ciphertext = response.read(MAX_CIPHER + 1)
@@ -236,6 +238,7 @@ def main():
     parser.add_argument('--expected-source', required=True)
     parser.add_argument('--expected-migration', type=int, required=True)
     parser.add_argument('--quiet', action='store_true')
+    parser.add_argument('--probe-only', action='store_true', help='Authenticated private HEAD only, no ciphertext GET/S3 operations')
     args = parser.parse_args()
     path = Path(args.config)
     with path.with_suffix('.lock').open('a') as lock:
@@ -253,10 +256,14 @@ def main():
         paused = False
         try:
             cleanup_export(api, config, persist)
-            message = task(api, config['sealer_uuid'], 'wallet-security-offhost-pause', '/bin/bash /app/seal-backup.sh pause')
             paused = True
+            message = task(api, config['sealer_uuid'], 'wallet-security-offhost-pause', '/bin/bash /app/seal-backup.sh pause')
             record = ready_record(message)
-            ciphertext = fetch_cipher(api, config, record, persist)
+            ciphertext = fetch_cipher(api, config, record, persist, args.probe_only)
+            if args.probe_only:
+                print(json.dumps({'private_authenticated_head_probe': True, 'ciphertext_get_or_upload': False,
+                    'temporary_export_stop_delete_confirmed': True, 'fresh_completed_pair_pause': True}))
+                return
             # This independent metadata ledger authenticates producer provenance
             # against replacement by a party holding only S3 write credentials.
             ledger_name = 'wallet-security/backup-manifests/' + record['cipher_sha256']
@@ -300,9 +307,11 @@ def main():
                     'fresh_fenced_completed_pair': True, 'temporary_export_removed': True,
                     'private_keys_or_s3_credentials_in_workload': False, 'native_s3_helpers_invoked': False}))
         finally:
-            if paused:
-                task(api, config['sealer_uuid'], 'wallet-security-offhost-resume', '/bin/bash /app/seal-backup.sh resume', 30)
-            lease(client, entity, config, owner, release=True)
+            try:
+                if paused:
+                    task(api, config['sealer_uuid'], 'wallet-security-offhost-resume', '/bin/bash /app/seal-backup.sh resume', 30)
+            finally:
+                lease(client, entity, config, owner, release=True)
 
 
 if __name__ == '__main__': safe_main(main)
