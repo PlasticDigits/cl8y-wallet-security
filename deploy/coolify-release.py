@@ -37,6 +37,9 @@ def main():
     parser.add_argument('--app', required=True)
     parser.add_argument('--branch')
     parser.add_argument('--sha')
+    parser.add_argument('--image-digest', help='Reuse the already tested public OCI manifest')
+    parser.add_argument('--runtime-hook-sha', default='b8aa303154b25d3017816c258b0daeb8954b7b26',
+                        help='Exact reviewed deployment hook preserving unique private DB DNS')
     parser.add_argument('--postgres-only', action='store_true')
     parser.add_argument('--deployment', help='Read only this deployment status')
     parser.add_argument('--receipts', action='store_true')
@@ -89,23 +92,43 @@ def main():
         {'key': 'PUBLIC_ORIGIN', 'value': 'https://security.cl8y.com', 'is_buildtime': False, 'is_runtime': True})
     build_service = 'postgres' if args.postgres_only else 'api'
     start_suffix = ' postgres' if args.postgres_only else ''
-    # Raw-mode custom start runs inside the builder. Its env/file flags must be
-    # relative there, while bind sources resolve against the preserved HOST repo.
-    start = ('timeout 180 docker compose --env-file .env -f compose.yml --project-directory '
-             '/data/coolify/applications/' + args.app + ' --project-name ' + args.app
-             + ' up -d --no-build' + start_suffix)
+    if not re.fullmatch('[0-9a-f]{40}', args.runtime_hook_sha):
+        parser.error('exact reviewed runtime hook SHA required')
+    # Keep the unique API database hostname on every release: the shared proxy
+    # network has an unrelated "postgres" alias. The hook writes only a literal
+    # secret reference, then interpolates it through Coolify's protected runtime.
+    if args.postgres_only:
+        start = ('timeout 180 docker compose --env-file .env -f compose.yml --project-directory '
+                 '/data/coolify/applications/' + args.app + ' --project-name ' + args.app
+                 + ' up -d --no-build' + start_suffix)
+    else:
+        hook_url = ('https://git.cl8y.com/code/cl8y-wallet-security/raw/commit/'
+                    + args.runtime_hook_sha + '/deploy/runtime-overlay.sh')
+        start = ("timeout 180 bash -o pipefail -c 'curl -fsS " + hook_url + ' | bash -s -- '
+                 + args.app + ' ' + args.sha + "'")
+    build = 'timeout 900 docker compose build ' + build_service
+    if args.image_digest:
+        if not re.fullmatch('sha256:[0-9a-f]{64}', args.image_digest):
+            parser.error('exact OCI manifest digest required')
+        registry = 'git.cl8y.com/code/cl8y-wallet-security@' + args.image_digest
+        build = ("timeout 300 sh -c 'im=" + registry
+                 + '; docker pull "$im" && docker tag "$im" wallet-security:' + args.sha + "'")
+    if len(start) > 255 or len(build) > 255:
+        raise SystemExit('Coolify custom command exceeds its observed storage limit')
     api('PATCH', '/applications/' + args.app, {
         'git_branch': args.branch, 'git_commit_sha': args.sha,
         'is_raw_compose_deployment_enabled': True, 'is_preserve_repository_enabled': True,
         'is_auto_deploy_enabled': False, 'is_preview_deployments_enabled': False,
         'inject_build_args_to_dockerfile': False, 'redact_all_env_values_in_logs': True,
         'include_coolify_default_variables': False,
-        'docker_compose_custom_build_command': 'timeout 900 docker compose build ' + build_service,
+        'docker_compose_custom_build_command': build,
         'docker_compose_custom_start_command': start})
     actual = api('GET', '/applications/' + args.app)
     settings = actual.get('settings', {})
     if not settings.get('is_raw_compose_deployment_enabled') or settings.get('inject_build_args_to_dockerfile') is not False:
         raise SystemExit('Required raw/ARG-injection boundary settings not applied')
+    if actual.get('docker_compose_custom_start_command') != start or actual.get('docker_compose_custom_build_command') != build:
+        raise SystemExit('Pinned deployment hook/build command readback differs')
     envs = api('GET', '/applications/' + args.app + '/envs')
     production = {item['key']: item for item in envs if not item.get('is_preview')}
     if not all(production[key].get('is_runtime') and not production[key].get('is_buildtime') for key in SECRETS):

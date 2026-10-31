@@ -46,6 +46,19 @@ Raw custom-start commands execute inside the builder: use relative
 `--env-file .env -f compose.yml` and the preserved host project directory;
 Coolify's automatically injected host env-file path is inaccessible there.
 
+The live proxy network already contains an unrelated `postgres` DNS alias.
+API resolves that alias differently when it joins both proxy and private
+networks; worker private-only access succeeds. Preserve the reviewed runtime
+hook `b8aa303154b25d3017816c258b0daeb8954b7b26` on every release. It changes
+only API's database hostname to the deployment's unique PostgreSQL container
+name, keeps the same protected password, and preserves all volumes, roles,
+origin and proxy trust. Its temporary JSON contains a literal secret reference,
+never an expanded credential. Record hook SHA separately from workload SHA.
+The release helper defaults to this exact hook and verifies command readback.
+Use `--image-digest sha256:...` to deploy the already tested public manifest
+without rebuilding. Custom commands must remain within the observed 255-byte
+storage limit; the helper uses compact commands and checks their lengths.
+
 PostgreSQL init creates separate NOSUPERUSER/NOCREATEDB/NOCREATEROLE identities.
 The migrator alone gets schema ownership and `RUN_MIGRATIONS=true`. It exits
 before the grants job restricts SQLx history to SELECT for both runtimes.
