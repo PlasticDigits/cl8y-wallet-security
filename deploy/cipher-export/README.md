@@ -18,11 +18,12 @@ forwarded-header trust. If the private interface/port is unavailable it fails
 closed, without taking over another listener or falling back to public bind.
 
 A fixed filename pattern, 270 MiB ceiling, age header, SHA256, regular-file /
-O_NOFOLLOW checks and inode/mtime/size fingerprint bind the data. The operator
+O_NOFOLLOW checks and inode/mtime/size fingerprint bind the data. Startup hashing also enforces the declared byte
+count and a 30-second deadline; the monotonic lifetime starts before validation. The operator
 must first obtain the sealer's completed-pair pause acknowledgement, keep it
 fenced while fetching, verify full ciphertext SHA256 before upload, and resume
 in cleanup. This is a transport for ciphertext, not a file-browser or archive
-creator. At most two sessions, 8 KiB headers, five-second header deadline,
+creator. At most two concurrent sessions, 8 KiB headers, five-second header deadline,
 120-second transfer deadline, and a maximum ten-minute wall/monotonic lifetime
 bound the helper. Expiry closes the listener; restart is disabled.
 

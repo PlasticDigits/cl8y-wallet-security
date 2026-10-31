@@ -186,9 +186,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Err("invalid cipher digest".into());
     }
     let expires: u64 = env::var("EXPORT_EXPIRES_UNIX")?.parse()?;
-    if expires <= now() || expires > now() + 600 {
+    let issued_at = now();
+    let lifetime = expires
+        .checked_sub(issued_at)
+        .ok_or("expired export capability")?;
+    if lifetime == 0 || lifetime > 600 {
         return Err("export capability lifetime invalid".into());
     }
+    let hard_deadline = Instant::now() + Duration::from_secs(lifetime);
+    let startup_deadline = (Instant::now() + Duration::from_secs(30)).min(hard_deadline);
     let filename = env::var("EXPORT_FILENAME")?;
     let prefix = "wallet-security-";
     let suffix = ".dump.age";
@@ -229,12 +235,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut hasher = Sha256::new();
     hasher.update(magic);
     let mut buffer = [0u8; 65536];
-    loop {
-        let count = file.read(&mut buffer)?;
+    let mut remaining = size - magic.len() as u64;
+    while remaining > 0 {
+        if Instant::now() >= startup_deadline || now() >= expires {
+            return Err("cipher validation deadline".into());
+        }
+        let amount = remaining.min(buffer.len() as u64) as usize;
+        let count = file.read(&mut buffer[..amount])?;
         if count == 0 {
-            break;
+            return Err("cipher truncated while validating".into());
         }
         hasher.update(&buffer[..count]);
+        remaining -= count as u64;
+    }
+    let mut extra = [0u8; 1];
+    if file.read(&mut extra)? != 0 {
+        return Err("cipher grew while validating".into());
     }
     if format!("{:x}", hasher.finalize()) != expected {
         return Err("cipher digest differs".into());
@@ -250,12 +266,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         inode: meta.ino(),
         modified: meta.modified()?,
     });
+    if Instant::now() >= hard_deadline || now() >= expires {
+        return Err("export capability expired before bind".into());
+    }
     let listener = TcpListener::bind(BIND)?;
     listener.set_nonblocking(true)?;
     let token = Arc::new(token.into_bytes());
     let active = Arc::new(AtomicUsize::new(0));
     println!("private_cipher_export_ready bind=10.8.0.1:18188 client=10.8.0.2 cipher_only=true");
-    let hard_deadline = Instant::now() + Duration::from_secs(expires - now());
     while now() < expires && Instant::now() < hard_deadline {
         match listener.accept() {
             Ok((stream, peer)) => {
