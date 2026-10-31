@@ -26,7 +26,7 @@ def main():
         return result
 
     # No inherited anonymous PGDATA mount may survive the clean final stage.
-    volumes = json.loads(run(['docker', 'image', 'inspect', '--format', '{{json .Config.Volumes}}', args.image]).stdout)
+    volumes = json.loads(run(['docker', 'image', 'inspect', args.image]).stdout)[0]['Config'].get('Volumes', {})
     assert not volumes
     identity = run(['age-keygen']).stdout
     public = run(['age-keygen', '-y'], identity).stdout.decode().strip()
