@@ -1,0 +1,8 @@
+{
+  "generator": "@cosmjs/amino serializeSignDoc + @cosmjs/crypto Secp256k1.createSignature",
+  "address": "terra10xcqpzrky6eff2g52qdye53xkk9jxkvr8yquzr",
+  "message": "CL8Y test vector\nOrigin: https://security.example\nChain: columbus-5\nPurpose: login\nNonce: independent-cosmjs-vector",
+  "public_key": "AxuExVZ7EmRAmV0+1aq6BWXXHhg0YEgZ/5wX9enV3QeP",
+  "signature": "GVfhOKNtPTkgMNWSWTDRbGlqhj6rQR/GGgvEUa9BFOtOvWDGRdWsyHt4Muo2dQ4bUGeEp8Tps1jU6xcvERE+JQ==",
+  "sign_doc": "{\"account_number\":\"0\",\"chain_id\":\"\",\"fee\":{\"amount\":[],\"gas\":\"0\"},\"memo\":\"\",\"msgs\":[{\"type\":\"sign/MsgSignData\",\"value\":{\"data\":\"Q0w4WSB0ZXN0IHZlY3RvcgpPcmlnaW46IGh0dHBzOi8vc2VjdXJpdHkuZXhhbXBsZQpDaGFpbjogY29sdW1idXMtNQpQdXJwb3NlOiBsb2dpbgpOb25jZTogaW5kZXBlbmRlbnQtY29zbWpzLXZlY3Rvcg==\",\"signer\":\"terra10xcqpzrky6eff2g52qdye53xkk9jxkvr8yquzr\"}}],\"sequence\":\"0\"}"
+}
