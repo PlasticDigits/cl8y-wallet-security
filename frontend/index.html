@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="referrer" content="no-referrer" />
+    <meta name="color-scheme" content="dark light" />
+    <meta
+      name="description"
+      content="CL8Y wallet security: verified wallets, delayed profile roles and notification contacts."
+    />
+    <title>Wallet security · CL8Y</title>
+  </head>
+  <body>
+    <a class="skip" href="#main">Skip to content</a>
+    <header class="masthead">
+      <a href="/" class="brand">CL8Y <span>Wallet security</span></a
+      ><span class="network" id="network">Connecting to service</span>
+    </header>
+    <div class="shell">
+      <nav aria-label="Sections">
+        <a href="#portfolio">Portfolio</a><a href="#roles">Wallet roles</a
+        ><a href="#contacts">Notifications</a>
+      </nav>
+      <div
+        class="feedback"
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
+        id="feedback"
+      >
+        Loading your session…
+      </div>
+      <main id="main" tabindex="-1"></main>
+      <footer>
+        Wallet proofs establish profile membership. Token authority and recovery
+        require separate on-chain authorization. Never enter a seed phrase or
+        private key here.
+      </footer>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
