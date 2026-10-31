@@ -145,3 +145,6 @@ gateway, verifies it stopped, retains it, and removes only owned image/scope-
 matched probe objects (including partial-create fallback after proven absence).
 Success deliberately exits 1 before a normal release. Environment and release
 start settings stay preserved; restore configuration only after collection.
+Stopped pre-start admission also checks actual memory, CPU, PID and exact
+no-new-privileges settings; resource drift is refused before the retained
+container is resumed, as well as during the later live guard pass.

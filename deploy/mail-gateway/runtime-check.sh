@@ -69,6 +69,12 @@ fi
 stage=credentials
 keys=$(docker inspect -f '{{range .Config.Env}}{{println (index (split . "=") 0)}}{{end}}' "$name")
 if printf '%s\n' "$keys" | grep -Eq 'TOKEN|PASSWORD|SECRET|CONTACT|DATABASE_URL'; then false; fi
+stage=resource_bounds
+[ "$(docker inspect -f '{{.HostConfig.Memory}}' "$name")" = 67108864 ]
+[ "$(docker inspect -f '{{.HostConfig.NanoCpus}}' "$name")" = 100000000 ]
+[ "$(docker inspect -f '{{.HostConfig.PidsLimit}}' "$name")" = 16 ]
+security=$(docker inspect -f '{{json .HostConfig.SecurityOpt}}' "$name")
+[[ "$security" == *'"no-new-privileges:true"'* || "$security" == *'"no-new-privileges"'* ]]
 if [ "$mode" = identity-only ]; then
   printf '%s\n' gateway_prestart_identity_verified
   exit 0
@@ -82,12 +88,6 @@ stage=network_internal
 stage=network_members
 [ "$(docker network inspect -f '{{len .Containers}}' wallet-security-notification)" = 1 ]
 [ "$(docker network inspect -f '{{len .Containers}}' wallet-security-mailu-outbound)" = 1 ]
-stage=resource_bounds
-[ "$(docker inspect -f '{{.HostConfig.Memory}}' "$name")" = 67108864 ]
-[ "$(docker inspect -f '{{.HostConfig.NanoCpus}}' "$name")" = 100000000 ]
-[ "$(docker inspect -f '{{.HostConfig.PidsLimit}}' "$name")" = 16 ]
-security=$(docker inspect -f '{{json .HostConfig.SecurityOpt}}' "$name")
-[[ "$security" == *'"no-new-privileges:true"'* || "$security" == *'"no-new-privileges"'* ]]
 stage=worker_denial
 worker=$(docker ps -q --filter label=com.docker.compose.project=qri1j8vhtwwb9akyxfiw73gc --filter label=com.docker.compose.service=worker)
 [[ "$worker" =~ ^[0-9a-f]{12,64}$ ]]
