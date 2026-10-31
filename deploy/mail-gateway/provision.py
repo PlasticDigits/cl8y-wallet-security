@@ -100,7 +100,7 @@ def main():
         return
     envs=api('GET','/applications/'+a.app+'/envs')
     if any(x.get('key') != 'SOURCE_SHA' for x in envs): raise RuntimeError('unexpected_runtime_env')
-    api('PATCH','/applications/'+a.app+'/envs',dict(key='SOURCE_SHA',value=a.sha,is_buildtime=True,is_runtime=False,is_literal=True))
+    api('PATCH' if envs else 'POST','/applications/'+a.app+'/envs',dict(key='SOURCE_SHA',value=a.sha,is_buildtime=True,is_runtime=True,is_literal=True))
     build='timeout 55 docker compose --env-file .env -f deploy/mail-gateway/compose.yml build gateway'
     start=('timeout 30 docker compose --env-file .env -f deploy/mail-gateway/compose.yml --project-directory /data/coolify/applications/'+a.app+'/deploy/mail-gateway --project-name '+a.app+' up -d --no-build gateway && timeout 35 bash deploy/mail-gateway/runtime-check.sh '+a.sha)
     settings=dict(git_branch=a.branch,git_commit_sha=a.sha,is_raw_compose_deployment_enabled=True,
