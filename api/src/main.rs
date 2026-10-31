@@ -181,21 +181,73 @@ async fn main() -> anyhow::Result<()> {
     if mode == "worker" {
         return worker::run(app).await;
     }
-    let routes=Router::new().route("/healthz",get(health)).route("/api/v1/status",get(status)).route("/api/v1/me",get(me))
- .route("/api/v1/chain/wallet/{contract}/{wallet}",get(chain::wallet))
- .route("/api/v1/chain/recovery/{contract}/{nonce}",get(chain::recovery))
- .route("/api/v1/auth/challenge",post(auth::challenge)).route("/api/v1/auth/verify",post(auth::verify)).route("/api/v1/auth/logout",post(auth::logout))
- .route("/api/v1/assignments",post(assignments::propose)).route("/api/v1/assignments/{id}/cancel",post(assignments::cancel))
- .route("/api/v1/contacts/email",post(notifications::email)).route("/api/v1/contacts/email/verify",post(notifications::verify_email))
- .route("/api/v1/contacts/telegram",post(notifications::telegram)).route("/api/v1/contacts/{id}/remove",post(notifications::remove)).route("/api/v1/contacts/telegram/confirm",post(notifications::confirm_telegram))
- .fallback_service(ServeDir::new(env::var("WEB_ROOT").unwrap_or_else(|_|"frontend/dist".into())).not_found_service(ServeFile::new(env::var("WEB_ROOT").unwrap_or_else(|_|"frontend/dist".into())+"/index.html")))
- .layer(axum::extract::DefaultBodyLimit::max(16384))
- .layer(SetResponseHeaderLayer::overriding(header::CACHE_CONTROL,header::HeaderValue::from_static("no-store")))
- .layer(SetResponseHeaderLayer::overriding(header::CONTENT_SECURITY_POLICY,header::HeaderValue::from_static("default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")))
- .layer(SetResponseHeaderLayer::overriding(header::X_CONTENT_TYPE_OPTIONS,header::HeaderValue::from_static("nosniff")))
- .layer(SetResponseHeaderLayer::overriding(header::REFERRER_POLICY,header::HeaderValue::from_static("no-referrer")))
- .layer(SetResponseHeaderLayer::overriding(header::STRICT_TRANSPORT_SECURITY,header::HeaderValue::from_static("max-age=31536000")))
- .with_state(app);
+    let mut connect_sources = String::from("'self'");
+    if let Ok(Some(registry)) = chain::Registry::load() {
+        for endpoint in [&registry.rpc_url, &registry.lcd_url] {
+            let origin = reqwest::Url::parse(endpoint)?
+                .origin()
+                .ascii_serialization();
+            connect_sources.push(' ');
+            connect_sources.push_str(&origin);
+        }
+    }
+    let csp=header::HeaderValue::from_str(&format!("default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src {connect_sources}; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"))?;
+    let routes = Router::new()
+        .route("/healthz", get(health))
+        .route("/api/v1/status", get(status))
+        .route("/api/v1/me", get(me))
+        .route(
+            "/api/v1/chain/wallet/{contract}/{wallet}",
+            get(chain::wallet),
+        )
+        .route(
+            "/api/v1/chain/recovery/{contract}/{nonce}",
+            get(chain::recovery),
+        )
+        .route("/api/v1/auth/challenge", post(auth::challenge))
+        .route("/api/v1/auth/verify", post(auth::verify))
+        .route("/api/v1/auth/logout", post(auth::logout))
+        .route("/api/v1/assignments", post(assignments::propose))
+        .route("/api/v1/assignments/{id}/cancel", post(assignments::cancel))
+        .route("/api/v1/contacts/email", post(notifications::email))
+        .route(
+            "/api/v1/contacts/email/verify",
+            post(notifications::verify_email),
+        )
+        .route("/api/v1/contacts/telegram", post(notifications::telegram))
+        .route("/api/v1/contacts/{id}/remove", post(notifications::remove))
+        .route(
+            "/api/v1/contacts/telegram/confirm",
+            post(notifications::confirm_telegram),
+        )
+        .fallback_service(
+            ServeDir::new(env::var("WEB_ROOT").unwrap_or_else(|_| "frontend/dist".into()))
+                .not_found_service(ServeFile::new(
+                    env::var("WEB_ROOT").unwrap_or_else(|_| "frontend/dist".into()) + "/index.html",
+                )),
+        )
+        .layer(axum::extract::DefaultBodyLimit::max(16384))
+        .layer(SetResponseHeaderLayer::overriding(
+            header::CACHE_CONTROL,
+            header::HeaderValue::from_static("no-store"),
+        ))
+        .layer(SetResponseHeaderLayer::overriding(
+            header::CONTENT_SECURITY_POLICY,
+            csp,
+        ))
+        .layer(SetResponseHeaderLayer::overriding(
+            header::X_CONTENT_TYPE_OPTIONS,
+            header::HeaderValue::from_static("nosniff"),
+        ))
+        .layer(SetResponseHeaderLayer::overriding(
+            header::REFERRER_POLICY,
+            header::HeaderValue::from_static("no-referrer"),
+        ))
+        .layer(SetResponseHeaderLayer::overriding(
+            header::STRICT_TRANSPORT_SECURITY,
+            header::HeaderValue::from_static("max-age=31536000"),
+        ))
+        .with_state(app);
     let listener = tokio::net::TcpListener::bind("0.0.0.0:8080").await?;
     axum::serve(
         listener,
