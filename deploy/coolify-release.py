@@ -104,7 +104,7 @@ def main():
     else:
         hook_url = ('https://git.cl8y.com/code/cl8y-wallet-security/raw/commit/'
                     + args.runtime_hook_sha + '/deploy/runtime-overlay.sh')
-        start = ("timeout 180 sh -c 'curl -fsS " + hook_url + ' | bash -s -- '
+        start = ("timeout 180 bash -o pipefail -c 'curl -fsS " + hook_url + ' | bash -s -- '
                  + args.app + ' ' + args.sha + "'")
     build = 'timeout 900 docker compose build ' + build_service
     if args.image_digest:
