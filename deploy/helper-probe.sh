@@ -50,6 +50,26 @@ test "$proxy_name" = /coolify-proxy && test "$proxy_managed" = true
 if [ "$trusted_proxy" = coolify-proxy ] || [ "$trusted_proxy" = "$proxy_ip" ]; then trusted_proxy_matches=true; fi
 printf 'ACTUAL_API_GUARD configured_user=%s forbidden_env=%s database_present=%s trusted_proxy_matches=%s\n' "$configured_user" "$forbidden" "$database_present" "$trusted_proxy_matches"
 printf 'ACTUAL_PROXY name=coolify-proxy image=%s managed=true edge_ipv4=%s\n' "$proxy_image" "$proxy_ip"
+state=$(docker inspect -f '{{.State.Status}} {{.State.ExitCode}} {{.State.OOMKilled}} {{.RestartCount}}' "$api")
+printf 'ACTUAL_API_STATE %s\n' "$state"
+log_output=$(docker logs --tail 50 "$api" 2>&1)
+boundary_seen=false; boundary_failure=false; psql_error=false; startup_error=false; logs_empty=false
+[[ "$log_output" == *'runtime_boundary_pass mode=api '* ]] && boundary_seen=true
+[[ "$log_output" == *'runtime_boundary_failed '* ]] && boundary_failure=true
+[[ "$log_output" == *'psql:'* ]] && psql_error=true
+[[ "$log_output" == *'Error:'* ]] && startup_error=true
+[ -z "$log_output" ] && logs_empty=true
+unset log_output
+printf 'ACTUAL_API_LOG_FLAGS boundary_pass=%s boundary_failure=%s psql_error=%s startup_error=%s empty=%s\n' "$boundary_seen" "$boundary_failure" "$psql_error" "$startup_error" "$logs_empty"
+set +e
+dns_output=$(timeout 10 docker run --rm --read-only --cap-drop ALL --security-opt no-new-privileges:true --network "$private" --network coolify --user "$configured_user" --entrypoint /bin/bash "$image" -c 'getent ahostsv4 coolify-proxy' 2>&1)
+dns_status=$?
+set -e
+dns_success=false; dns_exact_proxy=false
+[ "$dns_status" = 0 ] && dns_success=true
+[[ "$dns_output" == "$proxy_ip "* ]] && dns_exact_proxy=true
+unset dns_output
+printf 'ACTUAL_API_DNS two_network_resolution=%s exact_proxy=%s exit_code=%s\n' "$dns_success" "$dns_exact_proxy" "$dns_status"
 export PGCONNECT_TIMEOUT=10
 set +e
 result=$(timeout 20 docker run --rm --read-only --tmpfs /tmp:size=16m,mode=1777 --cap-drop ALL --security-opt no-new-privileges:true --network "$private" --user "$configured_user" -e DATABASE_URL -e PGCONNECT_TIMEOUT --entrypoint /bin/bash "$image" -c 'id -u; . /app/deploy/libpq.sh; exec psql -X -qAt -v ON_ERROR_STOP=1 -c "SELECT current_user,(SELECT count(*) FROM _sqlx_migrations WHERE success)"' 2>&1)
