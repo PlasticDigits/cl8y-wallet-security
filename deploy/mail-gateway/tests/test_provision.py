@@ -41,6 +41,22 @@ class Scope(unittest.TestCase):
   self.assertTrue(data['is_raw_compose_deployment_enabled'])
   self.assertEqual(data['git_commit_sha'],SHA)
   self.assertNotIn('TOKEN',json.dumps(data))
+ def test_actual_deploy_path_uses_bounded_commands_on_max_identifier(self):
+  target='a'*32
+  calls=[]
+  build,start=m.commands(target,SHA)
+  actual=app();actual.update(settings={'is_raw_compose_deployment_enabled':True,'inject_build_args_to_dockerfile':False},docker_compose_custom_build_command=build,docker_compose_custom_start_command=start)
+  responses=[app(),[],{}, {},actual,{'deployments':[{'deployment_uuid':'b'*24}]}]
+  def api(method,path,data=None):
+   calls.append((method,path,data));return responses.pop(0)
+  remote=subprocess.CompletedProcess([],0,SHA+'\trefs/heads/'+BRANCH+'\n','')
+  with patch.object(sys,'argv',['provision','--app',target,'--sha',SHA,'--branch',BRANCH]),patch.object(m,'api',side_effect=api),patch.object(m.subprocess,'run',return_value=remote),contextlib.redirect_stdout(io.StringIO()):m.main()
+  for method,path,data in calls:
+   if method in ('PATCH','POST'):
+    self.assertTrue(path.startswith('/applications/'+target) or (path=='/deploy' and data['uuid']==target))
+    for key in ('docker_compose_custom_build_command','docker_compose_custom_start_command'):
+     if key in data:self.assertLessEqual(len(data[key].encode()),255)
+  self.assertFalse(responses)
  def test_only_closed_own_deployment_receipts_escape(self):
   receipt='mail_gateway_preflight_pass uid=10001 no_default_route=true alias_private=true hostname_verified=true direct_mailu_denied=true other_targets_denied=true auth=false sends=0'
   deployment=dict(application_name=m.NAME,status='finished',logs=json.dumps([{'output':'synthetic-secret-provider-body'},{'output':receipt},{'output':receipt+' credential=synthetic-secret'}]))
