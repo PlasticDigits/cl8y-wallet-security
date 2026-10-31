@@ -238,7 +238,7 @@ async fn postgres_replay_consent_outbox_concurrency() {
     .await
     .unwrap();
     tx.commit().await.unwrap();
-    sqlx::query("UPDATE notification_outbox SET state='sending',locked_until=now()-interval '1 second' WHERE event_id=$1").bind(&event).execute(&app.db).await.unwrap();
+    sqlx::query("UPDATE notification_outbox o SET state='sending',first_attempt_at=now(),delivery_transport=CASE WHEN c.kind='email' THEN 'resend' ELSE 'telegram' END,locked_until=now()-interval '1 second' FROM contacts c WHERE c.id=o.contact_id AND o.event_id=$1").bind(&event).execute(&app.db).await.unwrap();
     let lease = Uuid::new_v4();
     let claim = worker::claim(&app, lease).await.unwrap().unwrap();
     assert_ne!(claim.get::<Uuid, _>("contact_id"), telegram);
@@ -254,5 +254,78 @@ async fn postgres_replay_consent_outbox_concurrency() {
     let reclaimed = worker::claim(&app, new_lease).await.unwrap().unwrap();
     assert_eq!(reclaimed.get::<Uuid, _>("id"), item);
     assert_eq!(sqlx::query("UPDATE notification_outbox SET state='sent' WHERE id=$1 AND lease_id=$2 AND state='sending'").bind(item).bind(lease).execute(&app.db).await.unwrap().rows_affected(),0,"stale owner cannot acknowledge a reclaimed item");
+    // SMTP remains non-reclaimable even if the process/provider configuration changes.
+    sqlx::query("UPDATE notification_outbox SET delivery_transport='smtp',locked_until=now()-interval '1 second' WHERE id=$1").bind(item).execute(&app.db).await.unwrap();
+    assert!(worker::claim(&app, Uuid::new_v4()).await.unwrap().is_none());
+    worker::tick(&app).await.unwrap();
+    let outcome = sqlx::query("SELECT state,last_error_code FROM notification_outbox WHERE id=$1")
+        .bind(item)
+        .fetch_one(&app.db)
+        .await
+        .unwrap();
+    assert_eq!(outcome.get::<String, _>("state"), "failed");
+    assert_eq!(
+        outcome.get::<String, _>("last_error_code"),
+        "delivery_uncertain"
+    );
+    // An ambiguous Resend attempt must never outlive its deduplication window,
+    // including pending/blocked rows across provider switches and process downtime.
+    for state in ["pending", "blocked"] {
+        sqlx::query("INSERT INTO notification_outbox(id,event_id,contact_id,template,state,attempts,delivery_transport,first_attempt_at,created_at) VALUES($1,$2,$3,$4,$5,1,'resend',now()-interval '25 hours',now()-interval '2 days')")
+            .bind(Uuid::new_v4()).bind(&event).bind(contact).bind(format!("aged-{state}")).bind(state).execute(&app.db).await.unwrap();
+    }
+    env::set_var("EMAIL_PROVIDER", "smtp");
+    env::set_var("MAILU_SMTP_TOKEN", "synthetic-owned-only");
+    env::set_var("MAILU_DELIVERY_ENABLED", "false");
+    assert!(
+        notifications::email_transport().is_none(),
+        "SMTP credential alone cannot activate delivery"
+    );
+    env::set_var("MAILU_DELIVERY_ENABLED", "true");
+    env::set_var("NOTIFICATION_SANDBOX_DESTINATIONS", "");
+    assert!(worker::claim(&app, Uuid::new_v4()).await.unwrap().is_none());
+    worker::tick(&app).await.unwrap();
+    env::set_var("EMAIL_PROVIDER", "resend");
+    env::set_var("RESEND_API_KEY", "synthetic-owned-only");
+    env::set_var("MAIL_FROM", "owned@example.test");
+    assert!(worker::claim(&app, Uuid::new_v4()).await.unwrap().is_none());
+    let expired:i64=sqlx::query_scalar("SELECT count(*) FROM notification_outbox WHERE event_id=$1 AND template IN ('aged-pending','aged-blocked') AND state='failed' AND last_error_code='delivery_uncertain'")
+        .bind(&event).fetch_one(&app.db).await.unwrap();
+    assert_eq!(expired, 2);
+    // An old item blocked before any send gets a fresh first-attempt window.
+    let first = Uuid::new_v4();
+    sqlx::query("INSERT INTO notification_outbox(id,event_id,contact_id,template,state,attempts,created_at) VALUES($1,$2,$3,'never-attempted','blocked',0,now()-interval '2 days')")
+        .bind(first).bind(&event).bind(contact).execute(&app.db).await.unwrap();
+    let fresh = worker::claim(&app, Uuid::new_v4()).await.unwrap().unwrap();
+    assert_eq!(fresh.get::<Uuid, _>("id"), first);
+    assert_eq!(fresh.get::<String, _>("delivery_transport"), "resend");
+    assert!(
+        fresh.get::<chrono::DateTime<chrono::Utc>, _>("first_attempt_at")
+            > chrono::Utc::now() - chrono::Duration::seconds(5)
+    );
+    // A known sandbox rejection consumes no actual attempt and clears provisional
+    // transport/window selection so an initial send can use a later provider.
+    sqlx::query("UPDATE notification_outbox SET state='pending',attempts=0,delivery_transport=NULL,first_attempt_at=NULL WHERE id=$1")
+        .bind(first).execute(&app.db).await.unwrap();
+    worker::tick(&app).await.unwrap();
+    let fresh=sqlx::query("SELECT state,attempts,delivery_transport,first_attempt_at FROM notification_outbox WHERE id=$1").bind(first).fetch_one(&app.db).await.unwrap();
+    assert_eq!(fresh.get::<String, _>("state"), "blocked");
+    assert_eq!(fresh.get::<i32, _>("attempts"), 0);
+    assert!(fresh
+        .get::<Option<String>, _>("delivery_transport")
+        .is_none());
+    assert!(fresh
+        .get::<Option<chrono::DateTime<chrono::Utc>>, _>("first_attempt_at")
+        .is_none());
+    for name in [
+        "EMAIL_PROVIDER",
+        "MAILU_SMTP_TOKEN",
+        "MAILU_DELIVERY_ENABLED",
+        "NOTIFICATION_SANDBOX_DESTINATIONS",
+        "RESEND_API_KEY",
+        "MAIL_FROM",
+    ] {
+        env::remove_var(name);
+    }
     chain::fixture_ingestion(&app, &address).await.unwrap();
 }

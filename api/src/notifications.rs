@@ -38,8 +38,26 @@ pub fn decrypt(app: &App, data: &[u8]) -> anyhow::Result<String> {
     Ok(String::from_utf8(value)?)
 }
 pub fn email_ready() -> bool {
-    env::var("RESEND_API_KEY").is_ok_and(|v| !v.is_empty())
-        && env::var("MAIL_FROM").is_ok_and(|v| !v.is_empty())
+    // API never receives the SMTP credential. The deployment owner sets readiness
+    // only after the independently reviewed gateway and owned delivery check pass.
+    if env::var("EMAIL_PROVIDER").as_deref() == Ok("smtp")
+        && env::var("PROCESS_MODE").as_deref() == Ok("api")
+    {
+        return env::var("MAILU_EMAIL_ENABLED").as_deref() == Ok("true");
+    }
+    email_transport().is_some()
+}
+pub fn email_transport() -> Option<&'static str> {
+    match env::var("EMAIL_PROVIDER").as_deref().unwrap_or("resend") {
+        "smtp" if crate::smtp::ready() => Some("smtp"),
+        "resend"
+            if env::var("RESEND_API_KEY").is_ok_and(|v| !v.is_empty())
+                && env::var("MAIL_FROM").is_ok_and(|v| !v.is_empty()) =>
+        {
+            Some("resend")
+        }
+        _ => None,
+    }
 }
 pub fn telegram_ready() -> bool {
     env::var("TELEGRAM_BOT_TOKEN").is_ok_and(|v| !v.is_empty())
@@ -327,7 +345,7 @@ pub async fn remove(
 // Responses and transport errors are never logged: provider bodies/URLs may contain PII or tokens.
 pub async fn deliver(
     app: &App,
-    kind: &str,
+    transport: &str,
     destination: &str,
     text: &str,
     id: &str,
@@ -338,15 +356,21 @@ pub async fn deliver(
             return Err("sandbox_destination_not_allowed");
         }
     }
+    if transport == "smtp" {
+        if email_transport() != Some("smtp") {
+            return Err("provider_configuration_changed");
+        }
+        return crate::smtp::deliver(destination, text, id).await;
+    }
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(15))
         .redirect(reqwest::redirect::Policy::none())
         .build()
         .map_err(|_| "transport_configuration")?;
-    let response = match kind {
-        "email" => {
-            if !email_ready() {
-                return Err("provider_unconfigured");
+    let response = match transport {
+        "resend" => {
+            if email_transport() != Some("resend") {
+                return Err("provider_configuration_changed");
             }
             client.post("https://api.resend.com/emails").bearer_auth(env::var("RESEND_API_KEY").map_err(|_|"provider_unconfigured")?).header("Idempotency-Key",id)
   .json(&json!({"from":env::var("MAIL_FROM").map_err(|_|"provider_unconfigured")?,"to":[destination],"subject":"CL8Y wallet security notice","text":text})).send().await
@@ -363,7 +387,7 @@ pub async fn deliver(
             .json()
             .await
             .map_err(|_| "provider_invalid_response")?;
-        let accepted = if kind == "telegram" {
+        let accepted = if transport == "telegram" {
             value["ok"] == true && value["result"]["message_id"].as_i64().is_some()
         } else {
             value["id"].as_str().is_some()
