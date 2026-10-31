@@ -43,6 +43,12 @@ networks=$(docker inspect -f '{{range $k,$v := .NetworkSettings.Networks}}{{prin
 [ "$(docker network inspect -f '{{.Internal}}' wallet-security-mailu-outbound)" = false ]
 [ "$(docker network inspect -f '{{len .Containers}}' wallet-security-notification)" = 1 ]
 [ "$(docker network inspect -f '{{len .Containers}}' wallet-security-mailu-outbound)" = 1 ]
+stage=resource_bounds
+[ "$(docker inspect -f '{{.HostConfig.Memory}}' "$name")" = 67108864 ]
+[ "$(docker inspect -f '{{.HostConfig.NanoCpus}}' "$name")" = 100000000 ]
+[ "$(docker inspect -f '{{.HostConfig.PidsLimit}}' "$name")" = 16 ]
+security=$(docker inspect -f '{{json .HostConfig.SecurityOpt}}' "$name")
+[[ "$security" == *'"no-new-privileges:true"'* || "$security" == *'"no-new-privileges"'* ]]
 stage=worker_denial
 worker=$(docker ps -q --filter label=com.docker.compose.project=qri1j8vhtwwb9akyxfiw73gc --filter label=com.docker.compose.service=worker)
 [[ "$worker" =~ ^[0-9a-f]{12,64}$ ]]
@@ -52,4 +58,4 @@ stage=tls_probe
 docker run --rm --name wallet-security-mail-gateway-probe --network wallet-security-notification --read-only --cap-drop ALL --security-opt no-new-privileges:true --memory 64m --cpus 0.1 --pids-limit 16 --log-driver none --entrypoint /bin/bash "$image" /app/preflight.sh
 stage=receipt
 [[ "$image_ref" =~ ^sha256:[a-f0-9]{64}$ && "$config_digest" =~ ^sha256:[a-f0-9]{64}$ ]]
-printf 'mail_gateway_runtime_pass source_sha=%s running_image_ref=%s built_config_digest=%s uid=10001 ports=0 mounts=0 credentials=false networks=2 worker_direct_egress_denied=true\n' "$sha" "$image_ref" "$config_digest"
+printf 'mail_gateway_runtime_pass source_sha=%s running_image_ref=%s built_config_digest=%s uid=10001 ports=0 mounts=0 credentials=false networks=2 memory_bytes=67108864 nano_cpus=100000000 pids=16 nnp=true worker_direct_egress_denied=true\n' "$sha" "$image_ref" "$config_digest"

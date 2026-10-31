@@ -42,7 +42,7 @@ It verifies actual container source labels and binds its running image reference
 to a no-start create from the newly built tag on that same daemon. The receipt
 keeps the observed running reference separate from the built image config
 digest, without assuming the daemon uses one identifier type. It checks UID, read-only root, no
-published ports/mounts/capabilities/credentials/proxy, exact networks and no
+published ports/mounts/capabilities/credentials/proxy, exact networks, actual memory/CPU/PID/no-new-privileges bounds and no
 other attachments, then confirms current worker direct SMTP egress is denied.
 The owned probe runs with the same nonroot/read-only/capability/resource bounds,
 verifies no default routes, direct Mailu/other-port/other-owned-target denial,
