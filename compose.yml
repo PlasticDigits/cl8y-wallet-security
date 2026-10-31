@@ -82,6 +82,7 @@ services:
       DATABASE_URL: postgresql://security_api:${DB_API_PASSWORD:?}@postgres:5432/wallet_security
       PROCESS_MODE: api
       RUN_MIGRATIONS: "false"
+      TRUSTED_PROXY_HOST: coolify-proxy
     expose: ["8080"]
     networks: [private, edge]
     labels:

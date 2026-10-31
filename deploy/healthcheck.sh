@@ -1,8 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 if [ "${PROCESS_MODE:-api}" = worker ]; then
-  export PGDATABASE="$DATABASE_URL"
-  unset DATABASE_URL
+  . /app/deploy/libpq.sh
   result=$(psql -X -qAt -v ON_ERROR_STOP=1 <<'SQL'
 \getenv expected SOURCE_SHA
 SELECT EXISTS(SELECT 1 FROM worker_heartbeats WHERE name='notifications'
