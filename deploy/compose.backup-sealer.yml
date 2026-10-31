@@ -1,0 +1,36 @@
+services:
+  seal:
+    image: ${BACKUP_SEAL_IMAGE:?}
+    user: "999:999"
+    restart: unless-stopped
+    network_mode: none
+    read_only: true
+    tmpfs: ["/tmp:size=16m,mode=1777"]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    environment:
+      AGE_PUBLIC_RECIPIENT: ${AGE_PUBLIC_RECIPIENT:?}
+      SEAL_INTERVAL_SECONDS: "300"
+      MAX_DUMP_BYTES: "268435456"
+    volumes:
+      - dumps:/backups:ro
+      - sealed:/encrypted
+    mem_limit: 128m
+    cpus: 0.25
+    pids_limit: 48
+    logging:
+      driver: json-file
+      options: {max-size: 2m, max-file: "2"}
+    healthcheck:
+      test: [CMD-SHELL, "find /encrypted -maxdepth 1 -name '*.age' -mmin -1500 | grep -q ."]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 150s
+    labels: [traefik.enable=false]
+volumes:
+  dumps:
+    external: true
+    name: ${PORTAL_BACKUP_VOLUME:?}
+  sealed:
+    name: ${SEALED_BACKUP_VOLUME:?}
