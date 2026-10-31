@@ -136,6 +136,10 @@ def main():
         # restore proves data survival as well as schema restoration.
         sql("BEGIN; INSERT INTO profiles(id,anchor_wallet) VALUES('00000000-0000-0000-0000-000000000001','owned-unfunded-sandbox'); INSERT INTO security_events(id,profile_id,action,wallet,proposed_at,executable_at) VALUES('deployment-owned-restore-fixture','00000000-0000-0000-0000-000000000001','storage_restore_fixture','owned-unfunded-sandbox',now(),now()+interval '1 day'); COMMIT;", role='security_api')
         checks['api_dml'] = True
+        sql("BEGIN; SELECT id FROM profiles WHERE false FOR UPDATE; SELECT assignment_delay_seconds FROM profiles WHERE false FOR UPDATE; ROLLBACK", role='security_api')
+        checks['api_profile_row_lock'] = True
+        result=sql("UPDATE profiles SET anchor_wallet='forbidden' WHERE false",role='security_api',check=False)
+        checks['api_anchor_write_denied']=result.returncode!=0 and 'permission denied' in result.stderr
         result = sql('BEGIN; DELETE FROM profiles WHERE false; ROLLBACK;', role='security_backup', check=False)
         checks['backup_read_only'] = result.returncode != 0 and 'permission denied' in result.stderr
         image_job('backup', 'backup', 'backup.sh', volume=True)

@@ -4,6 +4,8 @@ GRANT USAGE ON SCHEMA public TO security_api,security_worker,security_backup;
 GRANT SELECT ON _sqlx_migrations TO security_api,security_worker;
 -- API owns profile authentication and proposals. Worker may never mint sessions/proofs/assignments.
 GRANT SELECT,INSERT ON profiles,wallets TO security_api;
+-- PostgreSQL row locks require UPDATE on at least one column; never grant anchor writes.
+GRANT UPDATE(assignment_delay_seconds) ON profiles TO security_api;
 GRANT SELECT,INSERT,DELETE ON sessions TO security_api;
 GRANT SELECT,INSERT,UPDATE ON challenges,assignments,contacts,contact_verifications TO security_api;
 GRANT SELECT,INSERT ON security_events,notification_outbox TO security_api;
