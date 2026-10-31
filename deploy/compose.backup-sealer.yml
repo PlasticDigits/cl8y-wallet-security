@@ -23,7 +23,7 @@ services:
       driver: json-file
       options: {max-size: 2m, max-file: "2"}
     healthcheck:
-      test: [CMD-SHELL, "find /encrypted -maxdepth 1 -name '*.age' -mmin -1500 | grep -q ."]
+      test: [CMD, /bin/bash, /app/seal-backup.sh, check]
       interval: 30s
       timeout: 5s
       retries: 3

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Bounded nonsecret fixture test of sealer mounts, crypto and restart repair."""
 import argparse
+import datetime
 import hashlib
 import json
 import os
@@ -35,7 +36,7 @@ def main():
     with tempfile.TemporaryDirectory(prefix=prefix + '-') as temporary:
         source = Path(temporary) / 'input'
         source.mkdir(mode=0o755)
-        name = 'wallet-security-20000101T000000Z.dump'
+        name = 'wallet-security-' + datetime.datetime.now(datetime.timezone.utc).strftime('%Y%m%dT%H%M%SZ') + '.dump'
         try:
             run(['docker', 'run', '-d', '--name', pg, '--network', 'none', '--user', 'postgres',
                  '--cap-drop', 'ALL', '--security-opt', 'no-new-privileges:true',
@@ -92,6 +93,10 @@ def main():
             assert recovered.returncode == 0 and recovered.stdout == dump
             broken = bytearray(cipher); broken[-1] ^= 1
             assert recover(bytes(broken)).returncode != 0
+            run(['docker', 'exec', seal, '/bin/bash', '/app/seal-backup.sh', 'pause'], timeout=30)
+            paused_hash = hashlib.sha256(cipher).hexdigest()
+            check = run(['docker', 'exec', seal, '/bin/bash', '/app/seal-backup.sh', 'check'])
+            assert paused_hash.encode() in check.stdout
             begin = time.monotonic()
             run(['docker', 'stop', seal], timeout=15)
             graceful = time.monotonic() - begin < 10
@@ -108,7 +113,7 @@ def main():
             assert recovered.returncode == 0 and recovered.stdout == dump
             result = {'no_inherited_volume': True, 'actual_mounts_only_declared': True, 'input_read_only': True,
                       'owned_dump_age_roundtrip': True, 'corruption_rejected': True, 'graceful_snapshot_fence': graceful,
-                      'interrupted_pair_repaired': True, 'no_private_key_or_upload_credentials_in_workload': True}
+                      'interrupted_pair_repaired': True, 'completed_pair_pause_gate': True, 'no_private_key_or_upload_credentials_in_workload': True}
             print(json.dumps(result, sort_keys=True))
         finally:
             if started_seal: run(['docker', 'rm', '-f', seal], check=False)
