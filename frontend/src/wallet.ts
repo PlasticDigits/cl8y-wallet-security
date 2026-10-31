@@ -1,3 +1,5 @@
+import type { AminoSignResponse, StdSignDoc } from "@cosmjs/amino";
+
 // Official APIs and verified support limits are recorded in frontend/README.md.
 export type WalletKind = "keplr" | "station";
 export type WalletKey = {
@@ -12,6 +14,12 @@ export type ArbitrarySignature = {
 export type InjectedWallet = {
   enable(chainId: string): Promise<void>;
   getKey(chainId: string): Promise<WalletKey>;
+  signAmino?(
+    chainId: string,
+    signer: string,
+    document: StdSignDoc,
+    options?: { preferNoSetFee: boolean; preferNoSetMemo: boolean },
+  ): Promise<AminoSignResponse>;
   signArbitrary(
     chainId: string,
     signer: string,

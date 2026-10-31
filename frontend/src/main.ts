@@ -1,4 +1,5 @@
 import "./style.css";
+import { bindChain, chainView, resetChain, tickChain } from "./chain-ui";
 import { api, ApiError, assertMe, setCsrf } from "./api";
 import type { Assignment, Challenge, Me, Role, ServiceStatus } from "./api";
 import { checkAccount, connect, validateSignature } from "./wallet";
@@ -58,6 +59,7 @@ function requireWrite() {
     throw new Error("Refresh and sign in before making profile changes.");
 }
 function invalidateProof() {
+  resetChain();
   revision++;
   proof = undefined;
 }
@@ -307,8 +309,35 @@ function deliveryStatus(): string {
   }
   return "Notification delivery readiness is unavailable. No verification or warning is confirmed sent.";
 }
+function workerStatusView(): string {
+  const worker = status?.worker;
+  if (!worker || typeof worker !== "object")
+    return '<p class="hint">Notification worker status is unavailable. Warning delivery is not confirmed.</p>';
+  const record = worker as Record<string, unknown>;
+  const detail =
+    record.detail && typeof record.detail === "object"
+      ? (record.detail as Record<string, unknown>)
+      : {};
+  const labels: Record<string, string> = {
+    pending: "queued notices",
+    failed: "failed notices",
+    controller_fanout_pending: "controller fanout jobs",
+    verification_rejections: "verification rejections",
+  };
+  const backlog = Object.entries(labels).flatMap(([key, label]) => {
+    const count = detail[key];
+    return typeof count === "number" && Number.isSafeInteger(count) && count > 0
+      ? [`${count} ${label}`]
+      : [];
+  });
+  const oldest =
+    typeof detail.oldest_pending === "string"
+      ? date(detail.oldest_pending)
+      : undefined;
+  return `${backlog.length ? `<p class="notice">Notification processing requires attention: ${e(backlog.join("; "))}. Delivery may be delayed or have failed.${oldest ? ` Oldest pending: ${e(oldest)}.` : ""}</p>` : ""}<p class="hint">Worker last reported: ${typeof record.last_seen === "string" ? date(record.last_seen) : "unavailable"}.${typeof record.source_sha === "string" && /^[a-f0-9]{40,64}$/.test(record.source_sha) ? ` Worker source: <code>${e(record.source_sha)}</code>.` : ""} This report is not proof of recipient delivery.</p>`;
+}
 function contactsView() {
-  return `<section id="contacts" class="panel" aria-labelledby="contacts-title"><p class="eyebrow">Stay informed</p><h2 id="contacts-title">Notification contacts</h2><p class="notice">${deliveryStatus()}</p><p>Contacts receive warnings only. Email or Telegram possession grants no wallet ownership, guardian or recovery authority. Destinations are kept private and are never listed here.</p>
+  return `<section id="contacts" class="panel" aria-labelledby="contacts-title"><p class="eyebrow">Stay informed</p><h2 id="contacts-title">Notification contacts</h2><p class="notice">${deliveryStatus()}</p>${workerStatusView()}<p>Contacts receive warnings only. Email or Telegram possession grants no wallet ownership, guardian or recovery authority. Destinations are kept private and are never listed here.</p>
     ${me?.contacts.length ? `<ul class="contacts">${me.contacts.map((c) => `<li><div><strong>${e(c.kind)}</strong> ${badge(c.status)}${c.activation_at && c.status === "pending" ? `<p>Replacement contact pending; the previous verified contact remains effective. Activation ${deadline(c.activation_at)}</p>` : ""}${c.removal_at ? `<p>${c.status === "removed" ? "Removed by the server; removal deadline was" : "Removal scheduled; the verified contact stays effective until"} ${deadline(c.removal_at)}</p>` : ""}</div>${!c.removal_at && c.status !== "removed" ? button("Review contact removal", "remove-contact", `data-id="${e(c.id)}" ${!canWrite() ? "disabled" : ""}`) : ""}</li>`).join("")}</ul>` : "<p>No notification contacts in this snapshot.</p>"}
     <div class="columns"><form id="email-form"><h3>Verify an email address</h3><label for="email">Email address</label><input id="email" name="email" type="email" maxlength="254" autocomplete="off" required ${!canWrite() || busy ? "disabled" : ""}><p class="hint">Requests double opt-in. Check readiness above; acceptance alone does not mean an email was sent.</p><button ${!canWrite() || busy ? "disabled" : ""}>Request email verification</button></form>
     <form id="email-verify-form"><h3>Complete email verification</h3><label for="email-token">One-use verification token</label><input id="email-token" name="token" type="password" autocomplete="off" spellcheck="false" maxlength="1024" required ${!canWrite() || busy ? "disabled" : ""}><p class="hint">Paste a token received through the verification channel. It is never stored in this browser.</p><button ${!canWrite() || busy ? "disabled" : ""}>Verify email token</button></form></div>
@@ -324,7 +353,7 @@ function render() {
     : "Service unavailable";
   root.innerHTML = `<div class="page-title"><div><p class="eyebrow">Your wallet, your control</p><h1>Wallet security</h1><p>Verified identity. Visible delays. Clear authority.</p></div><div class="actions">${button("Refresh status", "refresh")}${me?.authenticated ? button("Sign out", "logout") : ""}</div></div>
     ${stale ? '<p class="notice danger">This snapshot is stale. Profile changes are blocked until you refresh successfully.</p>' : ""}
-    <section class="panel chain" aria-labelledby="chain-title"><div class="row"><h2 id="chain-title">On-chain protection</h2>${badge("Unavailable", "warn")}</div><p>${me?.chain.status === "unavailable" ? e(me.chain.reason || "Verified contract deployment and chain integration are unavailable.") : "The frontend has no verified deployment and ABI integration for authoritative settings or transaction previews."}</p><p>No live protection, balances, coverage or effective token settings can be established by this page. Proposed defaults are not effective settings. Existing tokens may be unmigrated; migration status is unknown. RPC health and chain time are unavailable.</p></section>
+    ${chainView({ me, connection, busy, stale })}
     <section class="panel" aria-labelledby="identity-title"><div class="row"><h2 id="identity-title">${me?.authenticated ? "Verified profile" : "Connect and prove your wallet"}</h2>${badge(me?.authenticated ? "Signed in" : "Signed out", me?.authenticated ? "good" : "")}</div>
     ${me?.authenticated ? `<p>Immutable login anchor ${address(me.anchor_wallet!)}</p><p>Changing the extension account does not change this profile. Each added wallet proves its own control.</p>` : "<p>Connect a Terra Classic wallet, then review and sign a one-use ADR-036 challenge to sign in. An address alone cannot authenticate you.</p>"}
     <form id="connect-form"><label for="provider">Injected wallet</label><div class="actions"><select id="provider" name="provider" ${busy ? "disabled" : ""}><option value="keplr" ${connection?.kind === "keplr" ? "selected" : ""}>Keplr-compatible injected provider</option><option value="station" ${connection?.kind === "station" ? "selected" : ""}>Station (Keplr bridge)</option></select><button ${busy || !me || stale ? "disabled" : ""}>Connect selected wallet</button></div></form>
@@ -333,16 +362,22 @@ function render() {
     ${proofView()}${reviewView()}
     <section id="portfolio" class="panel" aria-labelledby="portfolio-title"><div class="row"><div><p class="eyebrow">Multiwallet portfolio</p><h2 id="portfolio-title">Verified wallets</h2></div>${badge(`${me?.wallets.length ?? 0} wallets`)}</div>
     ${me?.wallets.length ? `<ul class="wallets">${me.wallets.map((w) => `<li><div>${address(w.address)}<p class="hint">Control verified ${date(w.verified_at)}</p></div>${badge(w.address === me!.anchor_wallet ? "Login anchor" : "Added wallet")}</li>`).join("")}</ul>` : "<p>No verified wallet portfolio loaded. Sign in to see your wallets.</p>"}
-    <p>Wallet membership is an off-chain record. Token balances, migrated coverage and chain protections remain unavailable.</p>
-    <div class="capabilities"><article><h3>Rate limits</h3><p>Effective / pending limits and delayed opt-out or relaxation: unavailable.</p></article><article><h3>Transfer lock</h3><p>Opt-in lock, unlock countdown, cancel and relock: unavailable.</p></article><article><h3>Recovery & disputes</h3><p>Recovery proposals, destination consent, contest state and execution: unavailable.</p></article></div><p class="hint">No token transaction can be previewed or signed until verified deployment identities, the versioned ABI and authoritative chain reads are integrated. Amounts and old/new settings are not inferred.</p></section>
+    <p>Wallet membership is an off-chain record. Use allowlisted chain reads above to inspect a token and wallet; profile membership establishes no token coverage.</p>
+    <div class="capabilities"><article><h3>Rate limits</h3><p>Read effective and pending policy from the chain; weakening requires the old delay.</p></article><article><h3>Transfer lock</h3><p>Chain controls require a verified deployment and the exact owner wallet.</p></article><article><h3>Recovery & disputes</h3><p>Read an exact case nonce; acceptance, objection and execution have separate authority.</p></article></div><p class="hint">Transaction controls remain gated until verified deployment identities, the supported ABI source and authoritative chain reads are available. Amounts and old/new settings are never inferred.</p></section>
     <section id="roles" class="panel" aria-labelledby="roles-title"><p class="eyebrow">Independent consent</p><h2 id="roles-title">Profile wallet roles</h2><p>Guardian, recovery and notification roles here are profile records. They cannot unlock, transfer or recover tokens. Consent and the full server delay are both required for activation.</p>
     <form id="assignment-form"><div class="columns"><div><label for="candidate">Candidate Terra Classic address</label><input id="candidate" name="candidate" autocomplete="off" spellcheck="false" maxlength="90" pattern="terra1[a-z0-9]+" required ${!canWrite() || busy ? "disabled" : ""}></div><div><label for="role">Profile role</label><select id="role" name="role" ${!canWrite() || busy ? "disabled" : ""}><option value="guardian">Guardian</option><option value="recovery">Recovery</option><option value="notification">Notification</option></select></div></div><p class="hint">First propose the exact candidate and role. Then select that candidate account in the extension, reconnect, and obtain its independent consent proof.</p><button ${!canWrite() || busy ? "disabled" : ""}>Review role proposal</button></form>
-    <p class="clock-note">${sampledTime ? "Profile countdowns estimate elapsed time from the API database timestamp. Chain time is unavailable." : "Server time unavailable: countdowns use your device clock and may be inaccurate."} Only the server confirms activation or removal. ${lastRefresh ? `Snapshot: ${date(lastRefresh)}.` : ""} Refresh after a deadline.</p>
+    <p class="clock-note">${sampledTime ? "Profile countdowns estimate elapsed time from the API database timestamp; token controls use separate finalized chain snapshots when available." : "Server time unavailable: countdowns use your device clock and may be inaccurate."} Only the server confirms activation or removal. ${lastRefresh ? `Snapshot: ${date(lastRefresh)}.` : ""} Refresh after a deadline.</p>
     <div class="assignments">${me?.assignments.length ? me.assignments.map(assignmentView).join("") : "<p>No profile role assignments in this snapshot.</p>"}</div></section>
     ${contactsView()}
-    <aside class="panel trust"><h2>Authority and recovery</h2><p>Trusted CL8Y governance is a trust assumption. Containment, unpause, recovery authorization, execution and key rotation are separate powers. A social account or contact alone cannot establish asset ownership. Recovery and dispute status remain unknown until authoritative chain integration is available.</p></aside>`;
+    <aside class="panel trust"><h2>Authority and recovery</h2><p>Trusted CL8Y governance is a trust assumption. Containment, unpause, recovery authorization, execution and key rotation are separate powers. A social account or contact alone cannot establish asset ownership. Only an authoritative chain query establishes the state of a specific recovery case; no case history is inferred.</p></aside>`;
   root.setAttribute("aria-busy", String(busy));
   bind();
+  bindChain(root, {
+    context: () => ({ me, connection, busy, stale }),
+    perform: run,
+    announce,
+    render,
+  });
   if (focusId) document.getElementById(focusId)?.focus();
 }
 function focusReview() {
@@ -591,6 +626,7 @@ window.addEventListener("pageshow", (event) => {
   }
 });
 setInterval(() => {
+  tickChain(root);
   root.querySelectorAll<HTMLElement>("[data-deadline]").forEach((node) => {
     node.textContent = remaining(node.dataset.deadline!, now());
   });
