@@ -83,9 +83,30 @@ def s3_client(storage):
 
 def s3_error_code(error):
     code = getattr(error, 'response', {}).get('Error', {}).get('Code')
-    allowed = {'404', '403', 'NoSuchBucket', 'NoSuchKey', 'AccessDenied', 'NoSuchLifecycleConfiguration',
+    allowed = {'404', '403', 'NoSuchBucket', 'NoSuchKey', 'AccessDenied', 'NoSuchLifecycleConfiguration', 'NoSuchBucketPolicy',
                'BucketAlreadyOwnedByYou', 'BucketAlreadyExists', 'SignatureDoesNotMatch', 'InvalidLocationConstraint'}
     return code if code in allowed else 'storage_request_failed'
+
+
+def validate_lifecycle(response):
+    rules = response.get('Rules', [])
+    if len(rules) != 1: raise Failure('offhost_lifecycle_rule_count_differs')
+    rule = rules[0]
+    allowed = {'ID', 'Status', 'Prefix', 'Filter', 'Expiration', 'AbortIncompleteMultipartUpload'}
+    catchall = (('Prefix' in rule and rule['Prefix'] == '' and 'Filter' not in rule)
+                or ('Prefix' not in rule and rule.get('Filter') == {'Prefix': ''}))
+    if (set(rule) - allowed or not catchall or rule.get('ID') != 'wallet-security-four-day-expiry'
+            or rule.get('Status') != 'Enabled' or rule.get('Expiration') != {'Days': 4}
+            or rule.get('AbortIncompleteMultipartUpload') != {'DaysAfterInitiation': 1}):
+        raise Failure('offhost_lifecycle_not_canonical_catchall')
+
+
+def require_no_bucket_policy(client, bucket):
+    try: client.get_bucket_policy(Bucket=bucket)
+    except Exception as error:
+        if s3_error_code(error) == 'NoSuchBucketPolicy': return
+        raise Failure('offhost_bucket_policy_unproven') from None
+    raise Failure('offhost_bucket_policy_present')
 
 
 def safe_main(function):

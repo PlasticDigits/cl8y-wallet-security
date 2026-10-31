@@ -9,7 +9,7 @@ import argparse
 import datetime
 import json
 from pathlib import Path
-from backup_control import Api, Failure, identifier, s3_client, s3_error_code, safe_main, validate_sealer, write_private
+from backup_control import Api, Failure, identifier, s3_client, s3_error_code, safe_main, validate_sealer, write_private, validate_lifecycle, require_no_bucket_policy
 
 
 def main():
@@ -63,17 +63,13 @@ def main():
     versioning = client.get_bucket_versioning(Bucket=bucket)
     if versioning.get('Status'):
         raise Failure('own_bucket_must_remain_never_versioned')
+    require_no_bucket_policy(client, bucket)
     lifecycle = {'Rules': [{'ID': 'wallet-security-four-day-expiry', 'Status': 'Enabled',
                            'Prefix': '', 'Expiration': {'Days': 4},
                            'AbortIncompleteMultipartUpload': {'DaysAfterInitiation': 1}}]}
     client.put_bucket_lifecycle_configuration(Bucket=bucket, LifecycleConfiguration=lifecycle)
     actual = client.get_bucket_lifecycle_configuration(Bucket=bucket)
-    rules = actual.get('Rules', [])
-    if (len(rules) != 1 or rules[0].get('ID') != lifecycle['Rules'][0]['ID']
-            or rules[0].get('Status') != 'Enabled' or rules[0].get('Expiration', {}).get('Days') != 4
-            or rules[0].get('AbortIncompleteMultipartUpload', {}).get('DaysAfterInitiation') != 1
-            or rules[0].get('Prefix', (rules[0].get('Filter') or {}).get('Prefix', '')) != ''):
-        raise Failure('offhost_lifecycle_readback_differs')
+    validate_lifecycle(actual)
     # This nonsecret ownership marker may expire; durable identity is also bound
     # to the private operator config and authenticated bucket owner readback.
     client.put_object(Bucket=bucket, Key='.portal-owner.json', Body=json.dumps(marker).encode(),

@@ -1,0 +1,11 @@
+services:
+  never-start:
+    image: debian:bookworm-20251020-slim@sha256:78d2f66e0fec9e5a39fb2c72ea5e052b548df75602b5215ed01a17171529f706
+    entrypoint: [/bin/false]
+    restart: "no"
+    network_mode: none
+    user: "999:999"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    labels: [traefik.enable=false]

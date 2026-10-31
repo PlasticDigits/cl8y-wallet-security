@@ -2,6 +2,7 @@ import copy
 import datetime as dt
 import hashlib
 import importlib.util
+import io
 import json
 from pathlib import Path
 import sys
@@ -55,7 +56,7 @@ class CaptureBoundaries(unittest.TestCase):
             def open(self,request,**_):
                 self.last=request;return CipherResponse(data)
         opener=Opener()
-        with patch.object(capture.secrets,'token_hex',side_effect=lambda n:'b'*(n*2)),patch.object(capture.socket,'create_connection',side_effect=ConnectionRefusedError),patch.object(capture.urllib.request,'build_opener',return_value=opener):
+        with patch.object(capture,'observe',return_value={'fixture_daemon_observed':True}),patch.object(capture.secrets,'token_hex',side_effect=lambda n:'b'*(n*2)),patch.object(capture.socket,'create_connection',side_effect=ConnectionRefusedError),patch.object(capture.urllib.request,'build_opener',return_value=opener):
             out=capture.fetch_cipher(api,cfg,record,lambda:persisted.append(copy.deepcopy(cfg)))
         self.assertEqual(out,data);self.assertTrue(api.deleted and api.assert_cleanup_flags)
         self.assertNotIn('b'*64,json.dumps(persisted));self.assertNotIn('b'*64,json.dumps(api.compose))
@@ -66,7 +67,7 @@ class CaptureBoundaries(unittest.TestCase):
         record={'dump':'wallet-security-20261031T000000Z.dump','cipher_sha256':'a'*64}
         class Opener:
             def open(self,*_args,**_):return CipherResponse(data)
-        with patch.object(capture.socket,'create_connection',side_effect=ConnectionRefusedError),patch.object(capture.urllib.request,'build_opener',return_value=Opener()):
+        with patch.object(capture,'observe',return_value={'fixture_daemon_observed':True}),patch.object(capture.socket,'create_connection',side_effect=ConnectionRefusedError),patch.object(capture.urllib.request,'build_opener',return_value=Opener()):
             with self.assertRaisesRegex(Failure,'whole_cipher_hash'):capture.fetch_cipher(api,cfg,record,lambda:None)
         self.assertTrue(api.deleted)
     def test_occupied_private_port_never_creates_or_stops_resource(self):
@@ -95,12 +96,15 @@ class CaptureBoundaries(unittest.TestCase):
 
 class MissingBucket(Exception):
     response={'Error':{'Code':'NoSuchBucket'}}
+class NoBucketPolicy(Exception):
+    response={'Error':{'Code':'NoSuchBucketPolicy'}}
 class S3Fixture:
     def __init__(self,exists=False,version=None):self.exists=exists;self.version=version;self.writes=[]
     def head_bucket(self,**_):
         if not self.exists:raise MissingBucket()
     def create_bucket(self,**kwargs):self.writes.append(('create',kwargs));self.exists=True
     def get_bucket_acl(self,**_):return {'Owner':{'ID':'owned-account'},'Grants':[{'Grantee':{'Type':'CanonicalUser','ID':'owned-account'},'Permission':'FULL_CONTROL'}]}
+    def get_bucket_policy(self,**_):raise NoBucketPolicy()
     def get_bucket_versioning(self,**_):return {'Status':self.version} if self.version else {}
     def put_bucket_lifecycle_configuration(self,**kwargs):self.writes.append(('lifecycle',kwargs));self.life=kwargs['LifecycleConfiguration']
     def get_bucket_lifecycle_configuration(self,**_):return self.life
@@ -135,3 +139,87 @@ class EnrollScope(unittest.TestCase):
         self.assertEqual(s3.writes,[])
 
 if __name__=='__main__':unittest.main()
+
+class FinalControllerNegatives(unittest.TestCase):
+    def test_cloned_config_cannot_reuse_persisted_claim(self):
+        cfg={'lease_owner':'old-shared-owner','resolved_sealed_volume':'owned'}
+        with patch.object(capture.secrets,'token_hex',side_effect=['first-fresh','second-fresh']):
+            first=capture.new_claim(copy.deepcopy(cfg));second=capture.new_claim(copy.deepcopy(cfg))
+        self.assertNotEqual(first,second)
+        client=type('Client',(),{'request':lambda *_args,**_kwargs:self.fail('second actor wrote active lease')})()
+        current={'owner':first,'volume':'owned','expires':str(int(time.time())+100)}
+        with patch.object(capture,'optional_kv',return_value=(current,{'version':1})):
+            with self.assertRaises(Failure):capture.lease(client,'entity',cfg,second)
+    def test_expired_or_foreign_claim_cannot_renew_or_release(self):
+        writes=[];client=type('Client',(),{'request':lambda *_args,**_kwargs:writes.append(True)})()
+        cfg={'resolved_sealed_volume':'owned'}
+        with patch.object(capture,'optional_kv',return_value=({'owner':'mine','volume':'owned','expires':'0'},{'version':1})):
+            with self.assertRaises(Failure):capture.lease(client,'entity',cfg,'mine',renew=True)
+        with patch.object(capture,'optional_kv',return_value=({'owner':'new-generation','volume':'owned','expires':str(int(time.time())+100)},{'version':2})):
+            capture.lease(client,'entity',cfg,'old-generation',release=True)
+        self.assertEqual(writes,[])
+    def test_model404_does_not_drop_unproven_listener_state(self):
+        cfg={'active_export':{'uuid':ID,'name':'owned','compose':{}}}
+        class Gone:
+            def call(self,*_args,**_kwargs):raise Failure('control_plane_http_404')
+        with patch.object(capture,'wait_private_closed',side_effect=Failure('listener_still_present')):
+            with self.assertRaises(Failure):capture.cleanup_export(Gone(),cfg,lambda:None)
+        self.assertIn('active_export',cfg)
+    def test_tag_and_size_filtered_expiry_are_not_catchall(self):
+        from backup_control import validate_lifecycle
+        base={'ID':'wallet-security-four-day-expiry','Status':'Enabled','Expiration':{'Days':4},'AbortIncompleteMultipartUpload':{'DaysAfterInitiation':1}}
+        for bad in [{'Tag':{'Key':'inapplicable','Value':'true'}},{'And':{'Prefix':'','Tags':[]}},{'ObjectSizeGreaterThan':100}]:
+            with self.assertRaises(Failure):validate_lifecycle({'Rules':[{**base,'Filter':bad}]})
+        validate_lifecycle({'Rules':[{**base,'Prefix':''}]})
+        validate_lifecycle({'Rules':[{**base,'Filter':{'Prefix':''}}]})
+    def test_actual_runtime_observer_rejects_public_or_extra_scope(self):
+        from export_observation import verify_records
+        cfg={'export_image':'fixture@sha256:'+'d'*64,'export_source_sha':'a'*40,'resolved_sealed_volume':'owned'}
+        records='\n'.join(['WG_OBS_IMAGE reference=sha256:'+'d'*64+' source='+'a'*40,
+            'WG_OBS_HOST user=999:999 running=true network=host memory=67108864 cpu=100000000 pids=16 readonly=true ports=0',
+            'WG_OBS_MOUNT volume owned /export false','WG_OBS_CAPDROP ALL','WG_OBS_SECURITY no-new-privileges:true',
+            'WG_OBS_ENV_NAMES_BEGIN','PATH','EXPORT_TOKEN','EXPECTED_CIPHER_SHA256','EXPORT_FILENAME','EXPORT_EXPIRES_UNIX','WG_OBS_ENV_NAMES_END',
+            'WG_OBS_LISTEN 0100080A:470C','WG_OBS_COMPLETE read_only=true'])
+        self.assertTrue(verify_records(records,cfg)['private_listener_only_verified'])
+        for mutated in [records.replace('0100080A:470C','00000000:470C'),records+'\nWG_OBS_MOUNT volume foreign /root true',records.replace('PATH\n','PATH\nCOOLIFY_TOKEN\n')]:
+            with self.assertRaises(Failure):verify_records(mutated,cfg)
+
+class TaskAndFenceOutcomes(unittest.TestCase):
+    def test_execute_response_error_is_reconciled_before_task_deletion(self):
+        now=dt.datetime.now(dt.timezone.utc).isoformat();events=[]
+        class Api:
+            def call(self,method,path,data=None):
+                events.append((method,path))
+                if method=='GET' and path.endswith('/scheduled-tasks'):return []
+                if method=='POST' and path.endswith('/scheduled-tasks'):return {'uuid':ID}
+                if path.endswith('/execute'):raise Failure('control_plane_http_500')
+                if path.endswith('/executions'):return [{'status':'success','created_at':now,'message':'owned-done'}]
+                if method=='DELETE':return {}
+                raise AssertionError('unexpected')
+        self.assertEqual(capture.task(Api(),'s'*24,'owned','fixed-command',1),'owned-done')
+        self.assertEqual(events[-1][0],'DELETE')
+    def test_unknown_execute_outcome_keeps_task_for_reconciliation(self):
+        events=[]
+        class Api:
+            def call(self,method,path,data=None):
+                events.append((method,path))
+                if method=='GET':return []
+                if path.endswith('/scheduled-tasks'):return {'uuid':ID}
+                raise Failure('control_plane_http_500')
+        with self.assertRaises(capture.UnknownTask):capture.task(Api(),'s'*24,'owned','fixed-command',0)
+        self.assertFalse(any(method=='DELETE' for method,_ in events))
+    def test_cleanup_failure_keeps_producer_fenced_and_claim_unreleased(self):
+        cfg={'resolved_sealed_volume':'owned','sealer_uuid':'s'*24,'daemon_binding_verified':True,
+            'inspector_app_uuid':'i'*24,'inspector_source_sha':'a'*40,'inspector_name':'owned-inspector',
+            'export_image':'fixture','export_source_sha':'a'*40}
+        stamp=dt.datetime.now(dt.timezone.utc).strftime('%Y%m%dT%H%M%SZ')
+        ready='sealed_backup_ready dump=wallet-security-'+stamp+'.dump cipher_sha256='+'d'*64
+        with tempfile.TemporaryDirectory() as directory:
+            path=Path(directory)/'cfg.json';path.write_text(json.dumps(cfg));claims=[];commands=[]
+            def fake_task(_api,_service,_name,command,*_args,**_kwargs):commands.append(command);return ready
+            def broken_fetch(_api,config,*_args,**_kwargs):config['active_export']={'uuid':ID};raise Failure('cleanup_unconfirmed')
+            health=io.BytesIO(json.dumps({'source_sha':'a'*40,'migration':5}).encode())
+            with patch.object(sys,'argv',['capture','--config',str(path),'--expected-source','a'*40,'--expected-migration','5','--probe-only']),patch.object(capture,'Api'),patch.object(capture,'validate_sealer'),patch.object(capture,'vault',return_value=(object(),'entity')),patch.object(capture,'lease',side_effect=lambda *a,**k:claims.append(k)),patch.object(capture,'cleanup_export'),patch.object(capture,'task',side_effect=fake_task),patch.object(capture,'fetch_cipher',side_effect=broken_fetch),patch.object(capture.urllib.request,'urlopen',return_value=health):
+                with self.assertRaisesRegex(Failure,'cleanup_unconfirmed'):capture.main()
+            self.assertEqual(commands,['/bin/bash /app/seal-backup.sh pause'])
+            self.assertFalse(any(call.get('release') for call in claims))

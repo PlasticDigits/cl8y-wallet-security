@@ -20,9 +20,16 @@ import time
 import urllib.error
 import urllib.request
 import yaml
-from backup_control import Api, Failure, NoRedirect, identifier, s3_client, s3_error_code, safe_main, validate_sealer, write_private
+from backup_control import Api, Failure, NoRedirect, identifier, s3_client, s3_error_code, safe_main, validate_sealer, write_private, validate_lifecycle, require_no_bucket_policy
+from export_observation import observe
 
 MAX_CIPHER = 270 * 1024 * 1024
+
+
+class UnknownTask(Failure):
+    def __init__(self, record):
+        super().__init__('owned_task_execution_outcome_unknown')
+        self.record = record
 
 
 def vault():
@@ -42,7 +49,7 @@ def optional_kv(client, entity, name):
         raise
 
 
-def lease(client, entity, config, owner, release=False):
+def lease(client, entity, config, owner, release=False, renew=False):
     name = 'wallet-security/offhost-lease'
     current, metadata = optional_kv(client, entity, name)
     now = int(time.time())
@@ -50,11 +57,34 @@ def lease(client, entity, config, owner, release=False):
         raise Failure('lease_volume_binding_differs')
     if release:
         if current.get('owner') != owner: return
+    elif renew:
+        if current.get('owner') != owner or int(current.get('expires', '0')) <= now:
+            raise Failure('backup_fencing_claim_lost_or_expired')
     elif int(current.get('expires', '0')) > now and current.get('owner') != owner:
         raise Failure('owned_volume_backup_busy')
     value = {'owner': owner, 'volume': config['resolved_sealed_volume'], 'expires': str(0 if release else now + 900)}
     client.request('POST', 'agent-secrets/data/' + entity + '/' + name,
                    {'options': {'cas': metadata['version']}, 'data': value})
+
+
+def new_claim(config):
+    config.pop('lease_owner', None)
+    owner = secrets.token_hex(16)
+    config['last_run_claim'] = owner
+    return owner
+
+
+def wait_private_closed():
+    deadline = time.monotonic() + 40
+    while True:
+        try:
+            with socket.create_connection(('10.8.0.1', 18188), timeout=2): pass
+        except ConnectionRefusedError:
+            return
+        except OSError:
+            if time.monotonic() > deadline: raise Failure('private_export_cleanup_unproven') from None
+        if time.monotonic() > deadline: raise Failure('private_export_listener_not_closed')
+        time.sleep(1)
 
 
 def task(api, service, name, command, timeout=210):
@@ -69,9 +99,15 @@ def task(api, service, name, command, timeout=210):
               'frequency': '0 0 1 1 *', 'timeout': timeout, 'enabled': False})
     task_id = identifier(item['uuid'])
     started = dt.datetime.now(dt.timezone.utc)
-    api.call('POST', prefix + '/' + task_id + '/execute')
     deadline = time.monotonic() + timeout
+    executed = False
     try:
+        # A response failure is not proof the queue rejected execution. Poll the
+        # owned task before deciding its outcome or deleting its evidence.
+        try:
+            api.call('POST', prefix + '/' + task_id + '/execute')
+        except Failure:
+            pass
         while time.monotonic() < deadline:
             rows = api.call('GET', prefix + '/' + task_id + '/executions')
             for row in rows:
@@ -79,12 +115,23 @@ def task(api, service, name, command, timeout=210):
                 try: timestamp = dt.datetime.fromisoformat(created.replace('Z', '+00:00'))
                 except ValueError: continue
                 if timestamp < started - dt.timedelta(seconds=2): continue
-                if row.get('status') == 'failed': raise Failure('owned_task_failed')
-                if row.get('status') == 'success': return row.get('message') or ''
+                if row.get('status') == 'failed':
+                    executed = True
+                    raise Failure('owned_task_failed')
+                if row.get('status') == 'success':
+                    executed = True
+                    return row.get('message') or ''
             time.sleep(1)
-        raise Failure('owned_task_deadline')
+        raise UnknownTask({'service': service, 'task': task_id, 'name': name,
+                           'command': command, 'started_at': started.isoformat()})
+    except Failure:
+        if not executed:
+            raise UnknownTask({'service': service, 'task': task_id, 'name': name,
+                               'command': command, 'started_at': started.isoformat()}) from None
+        raise
     finally:
-        api.call('DELETE', prefix + '/' + task_id)
+        if executed:
+            api.call('DELETE', prefix + '/' + task_id)
 
 
 def ready_record(message):
@@ -125,16 +172,7 @@ def cleanup_export(api, config, persist):
         else:
             context_guard(resource, config, active['name'], active['compose'], exporter)
             api.call('POST', '/services/' + exporter + '/stop')
-            deadline = time.monotonic() + 40
-            while True:
-                try:
-                    with socket.create_connection(('10.8.0.1', 18188), timeout=2): pass
-                except ConnectionRefusedError:
-                    break
-                except OSError:
-                    if time.monotonic() > deadline: raise Failure('private_export_cleanup_unproven') from None
-                if time.monotonic() > deadline: raise Failure('private_export_listener_not_closed')
-                time.sleep(1)
+            wait_private_closed()
             # Keep the external cipher volume/networks; never run global cleanup.
             api.call('DELETE', '/services/' + exporter + '?delete_volumes=false&delete_connected_networks=false&docker_cleanup=false')
             try:
@@ -143,11 +181,13 @@ def cleanup_export(api, config, persist):
                 if str(error) != 'control_plane_http_404': raise
             else:
                 raise Failure('temporary_export_deletion_unconfirmed')
+    # Model deletion does not establish daemon/listener cleanup by itself.
+    wait_private_closed()
     config.pop('active_export', None)
     persist()
 
 
-def fetch_cipher(api, config, record, persist, probe_only=False):
+def fetch_cipher(api, config, record, persist, probe_only=False, fence=lambda: None):
     # Never take over an occupied private listener belonging to another role.
     try:
         with socket.create_connection(('10.8.0.1', 18188), timeout=2): pass
@@ -170,6 +210,7 @@ def fetch_cipher(api, config, record, persist, probe_only=False):
     config['active_export'] = {'name': name, 'expires': expires, 'compose': compose}
     persist()
     try:
+        fence()
         created = api.call('POST', '/services', {'name': name, 'project_uuid': config['project_uuid'],
             'environment_uuid': config['environment_uuid'], 'server_uuid': config['server_uuid'],
             'destination_uuid': config['destination_uuid'], 'instant_deploy': False,
@@ -181,11 +222,18 @@ def fetch_cipher(api, config, record, persist, probe_only=False):
             {'key': 'EXPORT_TOKEN', 'value': token, 'is_literal': True, 'is_shown_once': True})
         actual = api.call('GET', '/services/' + exporter)
         context_guard(actual, config, name, compose, exporter)
+        fence()
         api.call('POST', '/services/' + exporter + '/start')
+        # A correct configuration/HEAD is not a daemon/private-listener proof.
+        # The separate stopped operator observer reads only this new container.
+        proof = observe(api, config, exporter, fence)
+        config['last_private_runtime_observation'] = proof
+        persist()
         opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), NoRedirect())
         endpoint = 'http://10.8.0.1:18188/cipher'
         deadline = time.monotonic() + 90
         while True:
+            fence()
             try:
                 request = urllib.request.Request(endpoint, method='HEAD', headers={'Authorization': 'Bearer ' + token})
                 with opener.open(request, timeout=5) as response:
@@ -197,6 +245,7 @@ def fetch_cipher(api, config, record, persist, probe_only=False):
                 time.sleep(1)
         if probe_only:
             return None
+        fence()
         request = urllib.request.Request(endpoint, headers={'Authorization': 'Bearer ' + token})
         with opener.open(request, timeout=30) as response:
             ciphertext = response.read(MAX_CIPHER + 1)
@@ -222,13 +271,28 @@ def check_bucket(client, config):
         raise Failure('offhost_bucket_not_private')
     if client.get_bucket_versioning(Bucket=bucket).get('Status'):
         raise Failure('offhost_bucket_versioned')
-    rules = client.get_bucket_lifecycle_configuration(Bucket=bucket).get('Rules', [])
-    if (len(rules) != 1 or rules[0].get('Expiration', {}).get('Days') != 4
-        or rules[0].get('Status') != 'Enabled' or rules[0].get('AbortIncompleteMultipartUpload', {}).get('DaysAfterInitiation') != 1
-        or rules[0].get('ID') != 'wallet-security-four-day-expiry'
-        or rules[0].get('Prefix', (rules[0].get('Filter') or {}).get('Prefix', '')) != ''):
-        raise Failure('offhost_lifecycle_drift')
+    require_no_bucket_policy(client, bucket)
+    validate_lifecycle(client.get_bucket_lifecycle_configuration(Bucket=bucket))
     return bucket
+
+
+def require_anonymous_object_denial(storage, bucket, key):
+    import urllib.parse
+    origin = urllib.parse.urlsplit(storage['endpoint'])
+    encoded = urllib.parse.quote(key, safe='/')
+    if storage.get('use_path_style_endpoint', True):
+        url = storage['endpoint'].rstrip('/') + '/' + bucket + '/' + encoded
+    else:
+        url = origin.scheme + '://' + bucket + '.' + origin.netloc + '/' + encoded
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), NoRedirect())
+    try:
+        with opener.open(urllib.request.Request(url, method='HEAD'), timeout=10) as response:
+            response.read(1024)
+    except urllib.error.HTTPError as error:
+        error.read(1024)
+        if error.code in [403, 404]: return
+        raise Failure('anonymous_object_privacy_unproven') from None
+    raise Failure('offhost_object_anonymously_readable')
 
 
 def main():
@@ -245,21 +309,31 @@ def main():
         try: fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError: raise Failure('local_backup_actor_busy') from None
         config = json.loads(path.read_text())
+        if config.get('unknown_task'):
+            raise Failure('owned_task_reconciliation_required_before_capture')
         def persist(): write_private(path, config)
         api = Api(); validate_sealer(api, config)
         if not config.get('daemon_binding_verified'): raise Failure('actual_cipher_volume_binding_unverified')
+        for key in ['inspector_app_uuid', 'inspector_source_sha', 'inspector_name', 'export_image', 'export_source_sha']:
+            if not config.get(key): raise Failure('reviewed_private_transport_plan_incomplete')
         health = json.load(urllib.request.urlopen('https://security.cl8y.com/healthz', timeout=10))
         if health.get('source_sha') != args.expected_source or health.get('migration') != args.expected_migration:
             raise Failure('workload_changed_or_migration_in_progress')
-        client, entity = vault(); owner = config.get('lease_owner') or secrets.token_hex(16)
-        config['lease_owner'] = owner; persist(); lease(client, entity, config, owner)
+        client, entity = vault()
+        # A copied config must never be an authorization to reuse another run's
+        # active claim. Each invocation gets an independent fencing generation.
+        owner = new_claim(config)
+        persist(); lease(client, entity, config, owner)
+        def fence(): lease(client, entity, config, owner, renew=True)
         paused = False
         try:
             cleanup_export(api, config, persist)
+            fence()
             paused = True
             message = task(api, config['sealer_uuid'], 'wallet-security-offhost-pause', '/bin/bash /app/seal-backup.sh pause')
             record = ready_record(message)
-            ciphertext = fetch_cipher(api, config, record, persist, args.probe_only)
+            fence()
+            ciphertext = fetch_cipher(api, config, record, persist, args.probe_only, fence)
             if args.probe_only:
                 print(json.dumps({'private_authenticated_head_probe': True, 'ciphertext_get_or_upload': False,
                     'temporary_export_stop_delete_confirmed': True, 'fresh_completed_pair_pause': True}))
@@ -268,13 +342,14 @@ def main():
             # against replacement by a party holding only S3 write credentials.
             ledger_name = 'wallet-security/backup-manifests/' + record['cipher_sha256']
             ledger = {'cipher_sha256': record['cipher_sha256'], 'dump': record['dump'],
-                'workload_source_sha': args.expected_source, 'migration': str(args.expected_migration),
+                'observed_health_source_sha': args.expected_source, 'observed_health_migration': str(args.expected_migration),
                 'producer_source_sha': config['sealer_source_sha']}
             existing, metadata = optional_kv(client, entity, ledger_name)
             if existing and existing != ledger: raise Failure('trusted_cipher_ledger_differs')
             if not existing:
                 client.request('POST', 'agent-secrets/data/' + entity + '/' + ledger_name,
                     {'options': {'cas': 0}, 'data': ledger})
+            fence()
             # Resume producer only after the full immutable ciphertext was
             # captured+hashed and the temporary reader was removed.
             task(api, config['sealer_uuid'], 'wallet-security-offhost-resume', '/bin/bash /app/seal-backup.sh resume', 30)
@@ -289,6 +364,7 @@ def main():
             except Exception as error:
                 if s3_error_code(error) not in {'404', 'NoSuchKey'}: raise
             if not present:
+                fence()
                 ready_record('sealed_backup_ready dump=' + record['dump'] + ' cipher_sha256=' + record['cipher_sha256'])
                 # Unique immutable content-addressed key; no reset of existing
                 # object age or repeated stale-data uploads on a retry.
@@ -297,21 +373,35 @@ def main():
             body = s3.get_object(Bucket=bucket, Key=key)['Body'].read(MAX_CIPHER + 1)
             if len(body) != len(ciphertext) or hashlib.sha256(body).hexdigest() != record['cipher_sha256']:
                 raise Failure('offhost_readback_cipher_differs')
-            config['last_backup'] = {**record, 'object_key': key, 'source_sha': args.expected_source,
-                'migration': args.expected_migration, 'cipher_bytes': len(body),
+            require_anonymous_object_denial(storage, bucket, key)
+            config['last_backup'] = {**record, 'object_key': key, 'observed_health_source_sha': args.expected_source,
+                'observed_health_migration': args.expected_migration, 'cipher_bytes': len(body),
                 'verified_at': dt.datetime.now(dt.timezone.utc).isoformat()}
             persist()
             if not args.quiet:
                 print(json.dumps({'offhost_cipher_upload_and_readback': True, 'cipher_sha256': record['cipher_sha256'],
-                    'cipher_bytes': len(body), 'source_sha': args.expected_source, 'migration': args.expected_migration,
+                    'cipher_bytes': len(body), 'observed_health_source_sha': args.expected_source, 'observed_health_migration': args.expected_migration,
                     'fresh_fenced_completed_pair': True, 'temporary_export_removed': True,
                     'private_keys_or_s3_credentials_in_workload': False, 'native_s3_helpers_invoked': False}))
+        except UnknownTask as error:
+            config['unknown_task'] = error.record
+            persist()
+            raise
         finally:
-            try:
-                if paused:
-                    task(api, config['sealer_uuid'], 'wallet-security-offhost-resume', '/bin/bash /app/seal-backup.sh resume', 30)
-            finally:
-                lease(client, entity, config, owner, release=True)
+            # Cleanup uncertainty keeps the producer fenced and claim active.
+            # The next owner must reconcile the exact old helper before resume.
+            if not config.get('active_export') and not config.get('unknown_task'):
+                try:
+                    if paused:
+                        fence()
+                        task(api, config['sealer_uuid'], 'wallet-security-offhost-resume', '/bin/bash /app/seal-backup.sh resume', 30)
+                except UnknownTask as error:
+                    config['unknown_task'] = error.record
+                    persist()
+                    raise
+                finally:
+                    if not config.get('unknown_task'):
+                        lease(client, entity, config, owner, release=True)
 
 
 if __name__ == '__main__': safe_main(main)

@@ -36,7 +36,7 @@ def main():
         raise Failure('offhost_cipher_hash_mismatch')
     client, entity = capture.vault()
     ledger, _ = client.kv_get(entity, 'wallet-security/backup-manifests/' + expected)
-    if ledger.get('cipher_sha256') != expected or ledger.get('dump') != last['dump'] or ledger.get('workload_source_sha') != last['source_sha']:
+    if ledger.get('cipher_sha256') != expected or ledger.get('dump') != last['dump'] or ledger.get('observed_health_source_sha') != last['observed_health_source_sha']:
         raise Failure('independent_producer_ledger_differs')
     recovery, metadata = client.kv_get(entity, cfg['custody_name'])
     read, write = os.pipe()
@@ -81,25 +81,28 @@ def main():
             version, success, checksum = row.split('|')
             if success != 't': raise Failure('restored_migration_unsuccessful')
             applied[int(version)] = checksum
-        files = run(['git', 'ls-tree', '-r', '--name-only', last['source_sha'], 'api/migrations']).stdout.decode().splitlines()
+        files = run(['git', 'ls-tree', '-r', '--name-only', last['observed_health_source_sha'], 'api/migrations']).stdout.decode().splitlines()
         expected_migrations = {}
         for filename in files:
             if filename.endswith('.sql'):
-                body = run(['git', 'show', last['source_sha'] + ':' + filename]).stdout
+                body = run(['git', 'show', last['observed_health_source_sha'] + ':' + filename]).stdout
                 expected_migrations[int(Path(filename).name.split('_')[0])] = hashlib.sha384(body).hexdigest()
-        if applied != expected_migrations or max(applied) != last['migration']:
+        if applied != expected_migrations or max(applied) != last['observed_health_migration']:
             raise Failure('restored_history_not_exact_pinned_source')
         counts = dict(zip(['profiles', 'wallets', 'assignments', 'contacts'], map(int, sql(
             'SELECT (SELECT count(*) FROM profiles),(SELECT count(*) FROM wallets),(SELECT count(*) FROM assignments),(SELECT count(*) FROM contacts)').split('|'))))
         timers_before = sql("SELECT COALESCE(jsonb_agg(jsonb_build_array(proposed_at,executable_at,delay_seconds,accepted_at,cancelled_at,removal_at) ORDER BY id),'[]'::jsonb) FROM assignments")
-        outbox_before = sql("SELECT COALESCE(jsonb_agg(jsonb_build_array(state,attempts,next_attempt_at,locked_until,sent_at,last_error_code) ORDER BY id),'[]'::jsonb) FROM notification_outbox")
+        # Version-independent audit/lease/transport preservation: include every
+        # present field except the unchanged opaque encrypted payload.
+        outbox_query = "SELECT COALESCE(jsonb_agg(to_jsonb(o)-'encrypted_payload' ORDER BY id),'[]'::jsonb) FROM notification_outbox o"
+        outbox_before = sql(outbox_query)
         # Exercise incident-promotion auth invalidation only in this scratch DB.
         sql('BEGIN; DELETE FROM sessions; DELETE FROM challenges; DELETE FROM contact_verifications; COMMIT;')
         if sql('SELECT (SELECT count(*) FROM sessions)+(SELECT count(*) FROM challenges)+(SELECT count(*) FROM contact_verifications)') != '0':
             raise Failure('scratch_auth_replay_invalidation_failed')
         if timers_before != sql("SELECT COALESCE(jsonb_agg(jsonb_build_array(proposed_at,executable_at,delay_seconds,accepted_at,cancelled_at,removal_at) ORDER BY id),'[]'::jsonb) FROM assignments"):
             raise Failure('original_timer_evidence_changed')
-        if outbox_before != sql("SELECT COALESCE(jsonb_agg(jsonb_build_array(state,attempts,next_attempt_at,locked_until,sent_at,last_error_code) ORDER BY id),'[]'::jsonb) FROM notification_outbox"):
+        if outbox_before != sql(outbox_query):
             raise Failure('attempt_or_uncertainty_evidence_changed')
         # Fresh recovered contact key, owned API-format nonce+ciphertext canary.
         nonce = secrets.token_bytes(12); marker = b'owned-offhost-contact-canary.invalid'
@@ -110,7 +113,7 @@ def main():
         recovered_bytes = bytes.fromhex(sql("SELECT encode(encrypted_destination,'hex') FROM contacts WHERE id='00000000-0000-0000-0000-000000000099'"))
         if AESGCM(bytes.fromhex(recovery['contact_encryption_key'])).decrypt(recovered_bytes[:12], recovered_bytes[12:], None) != marker:
             raise Failure('scratch_contact_key_canary_failed')
-        receipt = {'offhost_cipher_sha256': expected, 'source_sha': last['source_sha'], 'migration': max(applied),
+        receipt = {'offhost_cipher_sha256': expected, 'schema_source_commit_checked': last['observed_health_source_sha'], 'migration': max(applied),
             'exact_sqlx_checksums': True, 'aggregate_restored_counts': counts,
             'fresh_vault_age_decryption': True, 'fresh_contact_key_api_format_canary': True,
             'scratch_all_sessions_challenges_contact_tokens_invalidated': True,
