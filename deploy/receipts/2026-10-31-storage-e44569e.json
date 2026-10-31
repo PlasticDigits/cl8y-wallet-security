@@ -1,0 +1,27 @@
+{
+  "checks": {
+    "api_anchor_write_denied": true,
+    "api_dml": true,
+    "api_profile_row_lock": true,
+    "backup_read_only": true,
+    "backup_restore": true,
+    "exact_real_migration_history": true,
+    "image_nonroot": true,
+    "security_api_ddl_denied": true,
+    "security_api_history_write_denied": true,
+    "security_worker_ddl_denied": true,
+    "security_worker_history_write_denied": true,
+    "worker_session_insert_denied": true,
+    "worker_session_update_denied": true
+  },
+  "image_manifest_digest": "sha256:07b476118ac7ca8a8af9653471026d02c0e615ace174231bd50aea06392b607e",
+  "migration": 5,
+  "migration_count": 5,
+  "production_chain_configured": false,
+  "public_image_pull_verified": true,
+  "real_notification_sends_enabled": false,
+  "recorded_at": "2026-10-31T03:13:02.594506+00:00",
+  "restore_receipt": "restore_drill_pass migration=5 public_tables=17 archive_sha256=b0c9460eb9beaec2b7c0be5e1efc7e0a411ae83ae4203e2ffa50e9391c767d63 owned_profiles=1 owned_events=1",
+  "scope": "Exact image with disposable PostgreSQL; live deployment acceptance remains open",
+  "source_sha": "e44569e45b15dbee4b0347dff742f92bd85bedb2"
+}
