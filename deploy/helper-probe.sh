@@ -28,6 +28,19 @@ while IFS= read -r assignment; do
   esac
 done <<< "$snapshot"
 unset snapshot assignment
+api_password=${DATABASE_URL#*://}
+api_password=${api_password%%@*}
+api_password=${api_password#*:}
+pg_snapshot=$(docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' "$app-postgres-1")
+pg_api_password=''
+while IFS= read -r assignment; do
+  case "$assignment" in DB_API_PASSWORD=*) pg_api_password=${assignment#*=} ;; esac
+done <<< "$pg_snapshot"
+unset pg_snapshot assignment
+passwords_equal=false
+if [ -n "$pg_api_password" ] && [ "$api_password" = "$pg_api_password" ]; then passwords_equal=true; fi
+unset api_password
+printf 'ACTUAL_API_PASSWORDS api_equals_pg_bootstrap=%s\n' "$passwords_equal"
 proxy_name=$(docker inspect -f '{{.Name}}' coolify-proxy)
 proxy_image=$(docker inspect -f '{{.Config.Image}}' coolify-proxy)
 proxy_managed=$(docker inspect -f '{{index .Config.Labels "coolify.managed"}}' coolify-proxy)
@@ -42,7 +55,6 @@ set +e
 result=$(timeout 20 docker run --rm --read-only --tmpfs /tmp:size=16m,mode=1777 --cap-drop ALL --security-opt no-new-privileges:true --network "$private" --user "$configured_user" -e DATABASE_URL -e PGCONNECT_TIMEOUT --entrypoint /bin/bash "$image" -c 'id -u; . /app/deploy/libpq.sh; exec psql -X -qAt -v ON_ERROR_STOP=1 -c "SELECT current_user,(SELECT count(*) FROM _sqlx_migrations WHERE success)"' 2>&1)
 status=$?
 set -e
-unset DATABASE_URL
 sql_verified=false
 password_auth_failed=false
 probe_uid=false
@@ -51,5 +63,18 @@ if [ "$status" = 0 ] && grep -Fxq 'security_api|5' <<< "$result"; then sql_verif
 if [[ "$result" == *'password authentication failed'* ]]; then password_auth_failed=true; fi
 unset result
 printf 'ACTUAL_API_SQL uid_10001=%s role_and_migration5=%s password_auth_failed=%s\n' "$probe_uid" "$sql_verified" "$password_auth_failed"
+if [ "$sql_verified" = false ] && [ -n "$pg_api_password" ]; then
+  DATABASE_URL="postgresql://security_api:${pg_api_password}@postgres:5432/wallet_security"
+  export DATABASE_URL
+  set +e
+  result=$(timeout 20 docker run --rm --read-only --tmpfs /tmp:size=16m,mode=1777 --cap-drop ALL --security-opt no-new-privileges:true --network "$private" --user "$configured_user" -e DATABASE_URL -e PGCONNECT_TIMEOUT --entrypoint /bin/bash "$image" -c '. /app/deploy/libpq.sh; exec psql -X -qAt -v ON_ERROR_STOP=1 -c "SELECT current_user,(SELECT count(*) FROM _sqlx_migrations WHERE success)"' 2>&1)
+  status=$?
+  set -e
+  fallback_verified=false
+  if [ "$status" = 0 ] && [ "$result" = 'security_api|5' ]; then fallback_verified=true; fi
+  unset result
+  printf 'PG_BOOTSTRAP_API_SQL role_and_migration5=%s\n' "$fallback_verified"
+fi
+unset DATABASE_URL pg_api_password
 printf 'READ_ONLY_PROBE_COMPLETE existing_services_untouched=true\n'
 exit 1
