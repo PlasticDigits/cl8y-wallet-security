@@ -22,6 +22,7 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
 
 
 class Api:
+    MAX_RESPONSE_BYTES = 8 * 1024 * 1024
     def __init__(self):
         origin = os.environ['COOLIFY_URL'].rstrip('/')
         parsed = urllib.parse.urlsplit(origin)
@@ -37,10 +38,12 @@ class Api:
             data=None if data is None else json.dumps(data).encode())
         try:
             with self.opener.open(request, timeout=35) as response:
-                raw = response.read()
+                raw = response.read(self.MAX_RESPONSE_BYTES + 1)
+                if len(raw) > self.MAX_RESPONSE_BYTES:
+                    raise Failure('control_plane_response_too_large')
                 return json.loads(raw) if raw else {}
         except urllib.error.HTTPError as error:
-            error.read()
+            error.read(self.MAX_RESPONSE_BYTES + 1)
             raise Failure('control_plane_http_' + str(error.code)) from None
 
 
