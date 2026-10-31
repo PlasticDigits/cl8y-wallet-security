@@ -1,0 +1,114 @@
+name: wallet-security
+x-app: &app
+  build:
+    context: .
+    args:
+      SOURCE_SHA: ${SOURCE_SHA:?}
+  image: wallet-security:${SOURCE_SHA:?}
+  user: "10001:10001"
+  read_only: true
+  tmpfs: [/tmp:size=16m,mode=1777]
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  networks: [private]
+  mem_limit: 384m
+  cpus: 0.5
+  pids_limit: 96
+  logging:
+    driver: json-file
+    options: {max-size: 5m, max-file: "2"}
+x-common-env: &common-env
+  PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:?}
+  CONTACT_ENCRYPTION_KEY: ${CONTACT_ENCRYPTION_KEY:?}
+  SOURCE_SHA: ${SOURCE_SHA:?}
+  CHAIN_ID: columbus-5
+services:
+  postgres:
+    image: postgres:17.6-bookworm@sha256:f3bd19c606e442c3d7bdfa8002e03fe260a1023351e0ea4598032022b68dd6e3
+    user: postgres
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: wallet_security
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?}
+      POSTGRES_INITDB_ARGS: --auth-host=scram-sha-256
+      DB_MIGRATOR_PASSWORD: ${DB_MIGRATOR_PASSWORD:?}
+      DB_API_PASSWORD: ${DB_API_PASSWORD:?}
+      DB_WORKER_PASSWORD: ${DB_WORKER_PASSWORD:?}
+      DB_BACKUP_PASSWORD: ${DB_BACKUP_PASSWORD:?}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./deploy/postgres-init.sh:/docker-entrypoint-initdb.d/10-roles.sh:ro
+    networks: [private]
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U postgres -d wallet_security"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    mem_limit: 512m
+    cpus: 0.5
+    pids_limit: 128
+  migrate:
+    <<: *app
+    restart: "no"
+    environment:
+      <<: *common-env
+      DATABASE_URL: postgresql://security_migrator:${DB_MIGRATOR_PASSWORD:?}@postgres:5432/wallet_security
+      PROCESS_MODE: migrate
+      RUN_MIGRATIONS: "true"
+    depends_on:
+      postgres: {condition: service_healthy}
+    healthcheck: {disable: true}
+    labels: {exclude_from_hc: "true"}
+  grants:
+    <<: *app
+    restart: "no"
+    entrypoint: [/bin/sh, /app/deploy/grants.sh]
+    environment:
+      DATABASE_URL: postgresql://security_migrator:${DB_MIGRATOR_PASSWORD:?}@postgres:5432/wallet_security
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+    healthcheck: {disable: true}
+    labels: {exclude_from_hc: "true"}
+  api:
+    <<: *app
+    restart: unless-stopped
+    environment:
+      <<: *common-env
+      DATABASE_URL: postgresql://security_api:${DB_API_PASSWORD:?}@postgres:5432/wallet_security
+      PROCESS_MODE: api
+      RUN_MIGRATIONS: "false"
+    expose: ["8080"]
+    networks: [private, edge]
+    depends_on:
+      grants: {condition: service_completed_successfully}
+  worker:
+    <<: *app
+    restart: unless-stopped
+    environment:
+      <<: *common-env
+      DATABASE_URL: postgresql://security_worker:${DB_WORKER_PASSWORD:?}@postgres:5432/wallet_security
+      PROCESS_MODE: worker
+      RUN_MIGRATIONS: "false"
+    depends_on:
+      grants: {condition: service_completed_successfully}
+  backup:
+    <<: *app
+    restart: unless-stopped
+    user: postgres
+    entrypoint: [/bin/bash, /app/deploy/backup.sh]
+    environment:
+      DATABASE_URL: postgresql://security_backup:${DB_BACKUP_PASSWORD:?}@postgres:5432/wallet_security
+    volumes: [backups:/backups]
+    depends_on:
+      grants: {condition: service_completed_successfully}
+    healthcheck: {disable: true}
+    labels: {exclude_from_hc: "true"}
+networks:
+  private: {internal: true}
+  edge: {}
+volumes:
+  pgdata: {}
+  backups: {}
