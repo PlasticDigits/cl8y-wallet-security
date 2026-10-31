@@ -16,7 +16,7 @@ check_age() {
 
 check_complete() {
   local files=() all=() cipher name hash header
-  shopt -s nullglob
+  shopt -s nullglob dotglob
   files=(/encrypted/wallet-security-*.dump.age)
   all=(/encrypted/*)
   [ "${#files[@]}" = 1 ] && [ "${#all[@]}" = 2 ]
