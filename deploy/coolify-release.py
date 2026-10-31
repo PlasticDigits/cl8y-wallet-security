@@ -14,7 +14,7 @@ import urllib.request
 
 SECRETS = ('POSTGRES_PASSWORD', 'DB_MIGRATOR_PASSWORD', 'DB_API_PASSWORD',
            'DB_WORKER_PASSWORD', 'DB_BACKUP_PASSWORD', 'CONTACT_ENCRYPTION_KEY')
-RECEIPT = re.compile(r'(?:runtime_boundary_pass mode=(?:api|worker) uid=10001 admin_env_absent=true ddl_denied=true migration_write_denied=true|restore_drill_pass migration=\d+ public_tables=\d+ archive_sha256=[a-f0-9]{64}|backup_complete utc=\d{8}T\d{6}Z)')
+RECEIPT = re.compile(r'(?:runtime_boundary_pass mode=(?:api|worker) uid=10001 admin_env_absent=true ddl_denied=true migration_write_denied=true|restore_drill_pass migration=\d+ public_tables=\d+ archive_sha256=[a-f0-9]{64} owned_profiles=[01] owned_events=[01]|backup_complete utc=\d{8}T\d{6}Z)')
 
 
 def api(method, path, data=None):

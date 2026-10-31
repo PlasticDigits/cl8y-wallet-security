@@ -132,13 +132,15 @@ def main():
             ('session_update', "BEGIN; UPDATE sessions SET csrf_token='sandbox' WHERE false; ROLLBACK;")):
             result = sql(statement, role='security_worker', check=False)
             checks['worker_' + label + '_denied'] = result.returncode != 0 and 'permission denied' in result.stderr
-        sql("BEGIN; INSERT INTO profiles(id,anchor_wallet) VALUES('00000000-0000-0000-0000-000000000001','owned-unfunded-sandbox'); ROLLBACK;", role='security_api')
+        # Persist only these harmless owned rows in the disposable database so
+        # restore proves data survival as well as schema restoration.
+        sql("BEGIN; INSERT INTO profiles(id,anchor_wallet) VALUES('00000000-0000-0000-0000-000000000001','owned-unfunded-sandbox'); INSERT INTO security_events(id,profile_id,action,wallet,proposed_at,executable_at) VALUES('deployment-owned-restore-fixture','00000000-0000-0000-0000-000000000001','storage_restore_fixture','owned-unfunded-sandbox',now(),now()+interval '1 day'); COMMIT;", role='security_api')
         checks['api_dml'] = True
         result = sql('BEGIN; DELETE FROM profiles WHERE false; ROLLBACK;', role='security_backup', check=False)
         checks['backup_read_only'] = result.returncode != 0 and 'permission denied' in result.stderr
         image_job('backup', 'backup', 'backup.sh', volume=True)
         restored = image_job('restore', 'postgres', 'restore-drill.sh', volume=True)
-        checks['backup_restore'] = bool(re.fullmatch(r'restore_drill_pass migration=' + str(args.migration) + r' public_tables=\d+ archive_sha256=[0-9a-f]{64}\n?', restored.stdout))
+        checks['backup_restore'] = bool(re.fullmatch(r'restore_drill_pass migration=' + str(args.migration) + r' public_tables=\d+ archive_sha256=[0-9a-f]{64} owned_profiles=1 owned_events=1\n?', restored.stdout))
         print(json.dumps({'source_sha': args.sha, 'migration': args.migration, 'migration_count': len(actual), 'checks': checks}, sort_keys=True))
         if checks['backup_restore']:
             print(restored.stdout.strip())
