@@ -1,0 +1,49 @@
+{
+  "actual_daemon": {
+    "cap_drop": [
+      "ALL"
+    ],
+    "cpu_nanos": 250000000,
+    "input_dump_mount": "owned portal backup volume read-only",
+    "memory_bytes": 134217728,
+    "network_mode": "none",
+    "no_db_contact_private_age_s3_or_operator_credential_env_names": true,
+    "no_host_ports": true,
+    "no_inherited_pgdata_mount": true,
+    "output_cipher_mount": "framework-resolved owned sealer volume read-write",
+    "pids_limit": 48,
+    "read_only_root": true,
+    "security_options": [
+      "no-new-privileges:true"
+    ],
+    "user": "999:999"
+  },
+  "bounded_pause_test": {
+    "cipher_sha256": "98cb74672fec55cc2d7f44265ce5fc12601f836bde9f9b0587ec2cfffdf2b90a",
+    "completed_pair_acknowledged": true,
+    "future_export_requires_fresh_pause_age_and_hash": true,
+    "ready_dump_utc": "20261031T032330Z",
+    "resumed_after_test": true,
+    "standing_upload_fence": false,
+    "temporary_tasks_removed": true
+  },
+  "full_production_acceptance": "open",
+  "image_config_digest": "sha256:49bae27daf43dad0ea75c035dffae5e4e91f5b10f08daac8c61b19e5259e8cb1",
+  "image_manifest_digest": "sha256:f86972fceca8c2032380cf272d1a9043520080da7a213c1e1ad38b006eb460a9",
+  "inside_process": {
+    "cpu_max": "25000 100000",
+    "effective_capabilities": 0,
+    "interfaces": [
+      "lo"
+    ],
+    "memory_max": 134217728,
+    "no_new_privileges": 1,
+    "pids_max": 48,
+    "uid": 999
+  },
+  "offhost_upload_enabled": false,
+  "producer_source_sha": "6ba5c8c8bcfba6b9b523ecabda4036f72f64a429",
+  "provision_guard_source_sha": "70c298335547658fab06162d9deee45b746f7b98",
+  "scope": "Isolated ciphertext sealer runtime verification only; no offhost upload acceptance",
+  "source_image_fixture_checks_passed": 9
+}
