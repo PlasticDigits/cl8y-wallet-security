@@ -54,6 +54,35 @@ def commands(app, sha):
     if max(len(build.encode()),len(start.encode())) > 255: raise RuntimeError('command_bound')
     return build,start
 
+def observer_record(line):
+    try: row=json.loads(line)
+    except (ValueError,TypeError): return False
+    if not isinstance(row,dict): return False
+    schemas={
+      'container':({'record','role','present'}, {'record','role','present','id','image_ref','user','running','network_mode','memory','nano_cpus','pids_limit','read_only','cap_drop_csv','security_opt_csv','nnp','mount_count'}),
+      'mount':({'record','role','type','name','destination','rw'},),
+      'env_name':({'record','role','name'},),
+      'gateway_attachment':({'record','name','id','aliases_csv'},),
+      'network':({'record','name','id','driver','internal','members'},),
+      'network_member':({'record','network_id','id','name'},),
+      'owned_network_event':({'record','action','network_id','name','container_id','time'},),
+    }
+    if row.get('record') not in schemas or set(row) not in schemas[row['record']]: return False
+    if 'role' in row and row['role'] not in ('gateway','sealer'): return False
+    if row['record']=='env_name' and not re.fullmatch('[a-zA-Z_][a-zA-Z0-9_]{0,127}',row.get('name','')):return False
+    for key in ('id','network_id','container_id'):
+        if key in row and (not isinstance(row[key],str) or not re.fullmatch('[a-f0-9]{64}|',row[key])):return False
+    if 'image_ref' in row and not re.fullmatch('sha256:[a-f0-9]{64}',row['image_ref']):return False
+    if 'destination' in row and not re.fullmatch('/[a-zA-Z0-9._/-]{0,240}',row['destination']):return False
+    for key,value in row.items():
+        if value is None or isinstance(value,bool): continue
+        if isinstance(value,int):
+            if not -1<=value<=2**63-1:return False
+        elif isinstance(value,str):
+            if len(value)>256 or not re.fullmatch('[a-zA-Z0-9_.:/,=-]*',value):return False
+        else:return False
+    return True
+
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--create', action='store_true')
@@ -62,7 +91,9 @@ def main():
     p.add_argument('--branch')
     p.add_argument('--deployment')
     p.add_argument('--receipts', action='store_true')
+    p.add_argument('--observe', action='store_true')
     a = p.parse_args()
+    if a.observe and (a.create or a.deployment or a.receipts): raise RuntimeError('operation_conflict')
     if a.receipts and not a.deployment: raise RuntimeError('deployment_required')
     if a.create:
         if a.app or a.deployment or a.receipts: raise RuntimeError('operation_conflict')
@@ -96,7 +127,7 @@ def main():
             logs=deployment.get('logs',[])
             if isinstance(logs,str): logs=json.loads(logs)
             if not isinstance(logs,list): raise RuntimeError('logs_shape_invalid')
-            patterns=[r'mail_gateway_build_hook_entered', r'mail_gateway_image_inputs_verified', r'mail_gateway_tls_window start_utc=[0-9]{8}T[0-9]{6}Z end_utc=[0-9]{8}T[0-9]{6}Z ehlo=cl8y-gateway-[0-9]{8}T[0-9]{6}Z-[a-f0-9]{8}', r'mail_gateway_preflight_pass uid=10001 no_default_route=true alias_private=true hostname_verified=true direct_mailu_denied=true other_targets_denied=true auth=false sends=0',
+            patterns=[r'observer_(?:read_only_complete_service_changes=false|fixed_metadata_failed)', r'mail_gateway_build_hook_entered', r'mail_gateway_image_inputs_verified', r'mail_gateway_tls_window start_utc=[0-9]{8}T[0-9]{6}Z end_utc=[0-9]{8}T[0-9]{6}Z ehlo=cl8y-gateway-[0-9]{8}T[0-9]{6}Z-[a-f0-9]{8}', r'mail_gateway_preflight_pass uid=10001 no_default_route=true alias_private=true hostname_verified=true direct_mailu_denied=true other_targets_denied=true auth=false sends=0',
                 r'mail_gateway_runtime_pass source_sha=[a-f0-9]{40} running_image_ref=sha256:[a-f0-9]{64} built_config_digest=sha256:[a-f0-9]{64} uid=10001 ports=0 mounts=0 credentials=false networks=2 memory_bytes=67108864 nano_cpus=100000000 pids=16 nnp=true worker_direct_egress_denied=true',
                 r'mail_gateway_(?:preflight|runtime)_failed stage=(?:identity|routes|direct_denial|alias|tls|credentials|networks|resource_bounds|worker_denial|tls_probe|receipt)']
             for item in logs:
@@ -105,8 +136,23 @@ def main():
                 if not isinstance(output,str): continue
                 for line in output.splitlines():
                     if any(re.fullmatch(pattern,line) for pattern in patterns): print(line)
+                    elif observer_record(line): print(line)
         else:
             print(json.dumps({'application_uuid':a.app,'deployment_uuid':a.deployment,'status':status}))
+        return
+    if a.observe:
+        build='timeout 35 bash deploy/mail-gateway/observe.sh'
+        settings=dict(git_branch=a.branch,git_commit_sha=a.sha,is_raw_compose_deployment_enabled=True,
+            is_preserve_repository_enabled=True,is_auto_deploy_enabled=False,is_preview_deployments_enabled=False,
+            inject_build_args_to_dockerfile=False,include_coolify_default_variables=False,redact_all_env_values_in_logs=True,
+            docker_compose_custom_build_command=build)
+        api('PATCH','/applications/'+a.app,settings)
+        actual=owned(a.app)
+        if actual.get('git_commit_sha') != a.sha or actual.get('docker_compose_custom_build_command') != build or not actual.get('settings',{}).get('is_raw_compose_deployment_enabled'):
+            raise RuntimeError('observer_hook_not_applied')
+        result=api('POST','/deploy',{'uuid':a.app,'force':False})
+        print(json.dumps({'application_uuid':a.app,'observer_source_sha':a.sha,'observer_only':True,
+            'deployment_uuids':[identifier(x.get('deployment_uuid')) for x in result.get('deployments',[])]}))
         return
     build,start=commands(a.app,a.sha)
     envs=api('GET','/applications/'+a.app+'/envs')

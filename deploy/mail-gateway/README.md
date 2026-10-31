@@ -75,3 +75,18 @@ Focused checks: `cargo test --manifest-path deploy/mail-gateway/Cargo.toml
 and a bounded image build. Runtime preflight happens only after source review.
 [Coolify API](https://coolify.io/docs/api/endpoints/applications/create-public-application)
 is the primary creation/settings contract.
+
+## Coordinated read-only observer
+
+`--observe --app y08cgj4rjem3ldgfmxb11nsp --sha OPS_SHA --branch BRANCH`
+selects the independently reviewed `observe.sh` as this app's build hook. It
+preserves runtime env and the start hook, reads only fixed gateway and
+`seal-3nolvrgyhudkv3itihuyuim9` metadata, and deliberately exits 1 before any
+application stop/start step. There are no Docker run/create/start/stop/remove,
+filesystem-content or SMTP operations. Only selected image/user/mount metadata,
+HostConfig, gateway network names/IDs/flags/members/aliases, finite owned-project
+network events and environment **names** are emitted. Environment values and
+mount source paths are never emitted. If containment removed the gateway, its
+absence is explicit; surviving owned networks/events do not imply a runtime
+pass. The receiver accepts only closed typed records. The gateway image source
+remains the fixed reviewed `44a2d36...`; observer Git source is a separate pin.
