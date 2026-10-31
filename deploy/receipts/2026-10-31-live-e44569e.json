@@ -1,0 +1,100 @@
+{
+  "acceptance_gates": {
+    "chain_registry": "unconfigured",
+    "contact_key_recovery": "unverified; deployment owner continuation",
+    "external_wallet_extension_signing": "not tested",
+    "offhost_encrypted_backup": "unverified; deployment owner continuation",
+    "real_notification_sends": "disabled"
+  },
+  "artifact_binding": {
+    "binding_matches": true,
+    "field_interpretation": "The inspected .Image field returned the registry manifest digest; it was not a separately observed config ID.",
+    "manifest_bytes_hash_verified": true,
+    "manifest_config_digest": "sha256:556024673401ce7337c00ab54a40230abc6e1ffe45d03a41af27eb1ea7c772d9",
+    "observed_api_and_worker_dot_image_field": "sha256:07b476118ac7ca8a8af9653471026d02c0e615ace174231bd50aea06392b607e",
+    "registry_manifest_digest": "sha256:07b476118ac7ca8a8af9653471026d02c0e615ace174231bd50aea06392b607e",
+    "tested_local_image_config_id": "sha256:556024673401ce7337c00ab54a40230abc6e1ffe45d03a41af27eb1ea7c772d9"
+  },
+  "health": {
+    "migration": 5,
+    "server_time": "2026-10-31T03:32:30.271711Z",
+    "source_sha": "e44569e45b15dbee4b0347dff742f92bd85bedb2",
+    "status": "ok"
+  },
+  "independent_review": {
+    "single_invalid_forwarded_header_diagnostic_http": 400,
+    "source_and_deployment": "passed within documented scope",
+    "tls_headers_static_heartbeat": "passed"
+  },
+  "live_backup_restore": {
+    "archive_sha256": "a35bb283ca9e2ac783fa96547fff2e0a6182c2f26d71d2f793080e9ec4ab4c86",
+    "backup_utc": "20261031T032330Z",
+    "migration": 5,
+    "owned_events": 0,
+    "owned_profiles": 0,
+    "public_tables": 17,
+    "separate_disposable_owned_restore_events": 1,
+    "separate_disposable_owned_restore_profiles": 1
+  },
+  "owned_live_smoke": {
+    "anonymous_session": true,
+    "chain_unconfigured": true,
+    "challenge_replay_denied": true,
+    "delivery_disabled": true,
+    "dual_wallet_proof": true,
+    "health_exact_sha": true,
+    "logout": true,
+    "migration_exact": true,
+    "minimum_assignment_delay": true,
+    "no_contact_destinations": true,
+    "owned_wallet_login": true,
+    "pending_cancellation": true,
+    "secure_cookie": true,
+    "static_frontend": true,
+    "worker_exact_sha": true,
+    "worker_heartbeat_advances": true
+  },
+  "recorded_at": "2026-10-31T03:32:31.307406+00:00",
+  "runtime_boundaries": {
+    "api_uid": 10001,
+    "bootstrap_and_other_db_credentials_absent": true,
+    "runtime_ddl_denied": true,
+    "runtime_migration_history_write_denied": true,
+    "worker_uid": 10001
+  },
+  "runtime_hook": {
+    "ops_source_sha": "b8aa303154b25d3017816c258b0daeb8954b7b26",
+    "override": "api_database_hostname_only",
+    "password_unchanged": true,
+    "script_sha256": "7ef9611c2c8eea85c09d98a3103120c28ef65bae0291c64dd2c69e43f7bbe461",
+    "workload_source_sha": "e44569e45b15dbee4b0347dff742f92bd85bedb2"
+  },
+  "scope": "Verified deployment and owned profile flows; full production acceptance open",
+  "topology": {
+    "api_database_host": "deployment-specific private PostgreSQL container DNS",
+    "api_networks": [
+      "private",
+      "proxy"
+    ],
+    "postgres_networks": [
+      "private"
+    ],
+    "published_api_host_ports": 0,
+    "published_postgres_host_ports": 0,
+    "worker_networks": [
+      "private"
+    ]
+  },
+  "url": "https://security.cl8y.com",
+  "worker": {
+    "last_seen": "2026-10-31T03:32:30.488342Z",
+    "source_sha": "e44569e45b15dbee4b0347dff742f92bd85bedb2"
+  },
+  "worker_route_evidence": {
+    "task_status": "success",
+    "worker_has_no_default_route": true,
+    "worker_route_count": 1,
+    "worker_uid_10001": true
+  },
+  "workload_source_sha": "e44569e45b15dbee4b0347dff742f92bd85bedb2"
+}
