@@ -36,10 +36,12 @@ only environment variable. Neither the operator token nor an SSH key enters the
 image, resource environment, runtime mounts or logs. Every API response remains
 in memory; only closed resource IDs/status/receipt formats are printed.
 
-The short custom build fetches only its immutable public SHA hook over HTTPS,
-verifies the checked-out Git HEAD, and invokes a fixed direct Docker build with
+The short custom build executes its hook from the exact checked-out Git source,
+verifies Git HEAD against the validated public SHA, and invokes a fixed direct Docker build with
 only public SOURCE_SHA. This avoids Coolify Compose-command rewriting and
-working-directory env-file assumptions. Generated env files are excluded from
+working-directory env-file assumptions. Its literal command tokens comply with
+Coolify shell-safe API validation; no inline shell operators or validation bypass
+are used. Generated env files are excluded from
 the build context. The custom start executes `runtime-check.sh` in the authorized builder, whose
 Docker management interface is never mounted into gateway/probe workloads.
 It verifies actual container source labels and binds its running image reference

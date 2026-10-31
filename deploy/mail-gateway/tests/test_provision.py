@@ -21,10 +21,9 @@ class Scope(unittest.TestCase):
   self.assertLessEqual(max(len(build.encode()),len(start.encode())),255)
   self.assertNotIn('up -d',start)
   self.assertNotIn('--env-file',build)
-  self.assertIn('/raw/commit/'+SHA+'/deploy/mail-gateway/build.sh',build)
+  self.assertIn('bash deploy/mail-gateway/build.sh '+SHA,build)
   self.assertNotIn('docker compose',build)
-  self.assertIn('set -o pipefail',build)
-  self.assertIn('--proto =https',build)
+  self.assertNotRegex(build,r'[|;]')
  def test_refuses_portal_before_api_mutation(self):
   with patch.object(m,'api') as api:
    with self.assertRaisesRegex(RuntimeError,'portal_refused'):m.owned(m.PORTAL)

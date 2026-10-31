@@ -3,6 +3,7 @@
 set -eu -o pipefail
 sha=$1
 [[ "$#" = 1 && "$sha" =~ ^[a-f0-9]{40}$ ]]
+printf '%s\n' mail_gateway_build_hook_entered
 root=$(git rev-parse --show-toplevel)
 [ "$(git -C "$root" rev-parse HEAD)" = "$sha" ]
 timeout 50 docker build --build-arg SOURCE_SHA="$sha" -t "wallet-security-mail-gateway:$sha" "$root/deploy/mail-gateway"
