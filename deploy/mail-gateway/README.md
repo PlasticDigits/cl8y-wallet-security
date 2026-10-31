@@ -126,3 +126,22 @@ shell command substitution retains it and an exact-name comparison fails.
 sorting. It preserves every nonempty name, duplicate, prefix and whitespace-only
 line; all identity, exact-set, internal, membership and resource guards remain.
 The formatter fix is verification-only and does not authorize a network change.
+
+## Fixed retained-CID noAUTH preflight proposal
+
+`--noauth-preflight` is independently gated for one job. It targets only the
+fixed retained CID `643b1c...` and existing image/source44, never rebuilds,
+recreates or uses a Compose/platform working copy. It proves stopped identity,
+project/scope/name/image/source and same-daemon image-reference binding before
+start, plus exact network names/IDs/internal flags and empty membership. Existing
+binding/TLS probe names must be absent by successful inventory.
+
+After resuming only that CID it runs every normalized structural/resource/worker
+denial guard, then creates one owned image44 internal-only TLS probe with fixed
+labels and resource limits. The probe sends no AUTH or mail and its complete
+exit must succeed. The result records the exact UTC/EHLO window and keeps NAT
+source explicitly pending. Exit/TERM cleanup stops only the same identity-bound
+gateway, verifies it stopped, retains it, and removes only owned image/scope-
+matched probe objects (including partial-create fallback after proven absence).
+Success deliberately exits 1 before a normal release. Environment and release
+start settings stay preserved; restore configuration only after collection.
