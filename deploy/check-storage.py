@@ -13,6 +13,7 @@ from pathlib import Path
 import re
 import secrets
 import subprocess
+import tempfile
 import time
 
 
@@ -81,6 +82,11 @@ def main():
             expected[version] = hashlib.sha384(body).hexdigest()
     if not expected or max(expected) != args.migration:
         raise SystemExit('Expected migration version differs from pinned Git migration set')
+    bootstrap = tempfile.TemporaryDirectory(prefix=prefix + '-')
+    init_script = Path(bootstrap.name) / 'postgres-init.sh'
+    init_script.write_bytes(subprocess.run(['git', 'show', args.sha + ':deploy/postgres-init.sh'],
+                           capture_output=True, check=True, timeout=20).stdout)
+    init_script.chmod(0o644)  # Public source only; readable by container uid 999.
     created_network = created_volume = started_database = False
     try:
         run(['docker', 'network', 'create', '--internal', network]); created_network = True
@@ -91,7 +97,7 @@ def main():
         command = ['docker', 'run', '-d', '--name', database, '--network', network, '--network-alias', 'postgres',
                    '--user', 'postgres', '--cap-drop', 'ALL', '--security-opt', 'no-new-privileges:true',
                    '--tmpfs', '/var/lib/postgresql/data:uid=999,gid=999',
-                   '-v', str(Path('deploy/postgres-init.sh').resolve()) + ':/docker-entrypoint-initdb.d/10-roles.sh:ro']
+                   '-v', str(init_script) + ':/docker-entrypoint-initdb.d/10-roles.sh:ro']
         for key in ('POSTGRES_PASSWORD', 'POSTGRES_DB', 'DB_MIGRATOR_PASSWORD', 'DB_API_PASSWORD', 'DB_WORKER_PASSWORD', 'DB_BACKUP_PASSWORD'):
             command += ['-e', key]
         command += ['postgres:17.6-bookworm@sha256:f3bd19c606e442c3d7bdfa8002e03fe260a1023351e0ea4598032022b68dd6e3']
@@ -145,6 +151,7 @@ def main():
             run(['docker', 'volume', 'rm', backups], check=False)
         if created_network:
             run(['docker', 'network', 'rm', network], check=False)
+        bootstrap.cleanup()
 
 
 if __name__ == '__main__':
