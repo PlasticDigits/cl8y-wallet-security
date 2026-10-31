@@ -15,8 +15,12 @@ while true; do
     sha256sum --check --status "$dump.sha256"
     pg_restore --list "$dump" >/dev/null
     output="/encrypted/$name.age"
-    if [ ! -f "$output" ]; then
+    if [ ! -f "$output" ] || [ ! -f "$output.sha256" ] || ! sha256sum --check --status "$output.sha256"; then
       partial="$output.partial"
+      # A killed writer can leave a partial file or a complete file without its
+      # checksum. Rebuild only that owned ciphertext from the verified input.
+      test ! -L "$partial"
+      test ! -f "$partial" || unlink "$partial"
       trap 'test ! -f "${partial:-/nonexistent}" || unlink "$partial"' EXIT
       timeout 120 age -r "$AGE_PUBLIC_RECIPIENT" -o "$partial" "$dump" 2>/dev/null
       mv "$partial" "$output"
