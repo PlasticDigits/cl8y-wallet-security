@@ -55,8 +55,35 @@ fn valid_hex(value: &str) -> bool {
             .bytes()
             .all(|c| c.is_ascii_digit() || (b'a'..=b'f').contains(&c))
 }
-fn response(stream: &mut TcpStream, status: &str) {
-    let _=write!(stream,"HTTP/1.1 {status}\r\nContent-Length: 0\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n");
+fn write_bounded(
+    stream: &mut TcpStream,
+    mut data: &[u8],
+    deadline: Instant,
+) -> std::io::Result<()> {
+    while !data.is_empty() {
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        if remaining.is_zero() {
+            return Err(std::io::ErrorKind::TimedOut.into());
+        }
+        stream.set_write_timeout(Some(remaining.min(Duration::from_secs(1))))?;
+        match stream.write(data) {
+            Ok(0) => return Err(std::io::ErrorKind::WriteZero.into()),
+            Ok(count) => data = &data[count..],
+            Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
+            Err(error)
+                if error.kind() == std::io::ErrorKind::TimedOut
+                    || error.kind() == std::io::ErrorKind::WouldBlock =>
+            {
+                continue
+            }
+            Err(error) => return Err(error),
+        }
+    }
+    Ok(())
+}
+fn response(stream: &mut TcpStream, status: &str, deadline: Instant) {
+    let bytes=format!("HTTP/1.1 {status}\r\nContent-Length: 0\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n");
+    let _ = write_bounded(stream, bytes.as_bytes(), deadline);
 }
 fn authorized(header: &str, token: &[u8]) -> bool {
     let mut auth = None;
@@ -96,7 +123,14 @@ fn serve(
     let header_deadline = Instant::now() + Duration::from_secs(5);
     let mut bytes = Vec::with_capacity(1024);
     while bytes.len() < 8192 && !bytes.ends_with(b"\r\n\r\n") {
-        if Instant::now() > header_deadline {
+        let budget = header_deadline.saturating_duration_since(Instant::now());
+        if budget.is_zero() {
+            return;
+        }
+        if stream
+            .set_read_timeout(Some(budget.min(Duration::from_secs(1))))
+            .is_err()
+        {
             return;
         }
         let mut byte = [0u8];
@@ -106,11 +140,11 @@ fn serve(
         bytes.push(byte[0]);
     }
     if !bytes.ends_with(b"\r\n\r\n") {
-        response(&mut stream, "431 Request Header Fields Too Large");
+        response(&mut stream, "431 Request Header Fields Too Large", deadline);
         return;
     }
     let Ok(header) = std::str::from_utf8(&bytes) else {
-        response(&mut stream, "400 Bad Request");
+        response(&mut stream, "400 Bad Request", deadline);
         return;
     };
     let line = header.split("\r\n").next().unwrap_or("");
@@ -122,6 +156,7 @@ fn serve(
             } else {
                 "503 Service Unavailable"
             },
+            deadline,
         );
         return;
     }
@@ -129,19 +164,22 @@ fn serve(
         || peer.ip() != IpAddr::V4(Ipv4Addr::new(10, 8, 0, 2))
         || !authorized(header, &token)
     {
-        response(&mut stream, "403 Forbidden");
+        response(&mut stream, "403 Forbidden", deadline);
         return;
     }
     if line != "GET /cipher HTTP/1.1" && line != "HEAD /cipher HTTP/1.1" {
-        response(&mut stream, "404 Not Found");
+        response(&mut stream, "404 Not Found", deadline);
         return;
     }
     let Some(mut file) = snapshot.open() else {
-        response(&mut stream, "409 Conflict");
+        response(&mut stream, "409 Conflict", deadline);
         return;
     };
     let size = snapshot.size;
-    if write!(stream,"HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Length: {size}\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n").is_err(){return}
+    let headers=format!("HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Length: {size}\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n");
+    if write_bounded(&mut stream, headers.as_bytes(), deadline).is_err() {
+        return;
+    }
     if line.starts_with("HEAD ") {
         return;
     }
@@ -158,7 +196,7 @@ fn serve(
         if count == 0 {
             return;
         }
-        if stream.write_all(&buffer[..count]).is_err() {
+        if write_bounded(&mut stream, &buffer[..count], deadline).is_err() {
             return;
         }
         remaining -= count as u64;
@@ -404,5 +442,25 @@ mod wire_tests {
         assert!(open_fixed(link.to_str().unwrap()).is_err());
         std::fs::remove_file(link).unwrap();
         std::fs::remove_file(path).unwrap();
+    }
+}
+
+#[cfg(test)]
+mod deadline_tests {
+    use super::*;
+    #[test]
+    fn nonreading_peer_cannot_reset_write_budget() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let thread = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let started = Instant::now();
+            let data = vec![42u8; 8 * 1024 * 1024];
+            let result = write_bounded(&mut stream, &data, started + Duration::from_millis(80));
+            assert!(result.is_err());
+            assert!(started.elapsed() < Duration::from_secs(1));
+        });
+        let _client = TcpStream::connect(addr).unwrap();
+        thread.join().unwrap();
     }
 }
