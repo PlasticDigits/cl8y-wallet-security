@@ -26,8 +26,8 @@ def api(method, path, data=None):
         headers={'Authorization':'Bearer '+os.environ['COOLIFY_WIRE_TOKEN'],
                  'Content-Type':'application/json', 'Accept':'application/json'})
     with OPENER.open(request, timeout=20) as response:
-        content = response.read(4_000_001)
-        if len(content) > 4_000_000: raise RuntimeError('response_bound')
+        content = response.read(8_000_001)
+        if len(content) > 8_000_000: raise RuntimeError('response_bound')
         return json.loads(content) if content else None
 
 def identifier(value):
@@ -96,8 +96,8 @@ def main():
             if isinstance(logs,str): logs=json.loads(logs)
             if not isinstance(logs,list): raise RuntimeError('logs_shape_invalid')
             patterns=[r'mail_gateway_tls_window start_utc=[0-9]{8}T[0-9]{6}Z end_utc=[0-9]{8}T[0-9]{6}Z ehlo=cl8y-gateway-[0-9]{8}T[0-9]{6}Z-[a-f0-9]{8}', r'mail_gateway_preflight_pass uid=10001 no_default_route=true alias_private=true hostname_verified=true direct_mailu_denied=true other_targets_denied=true auth=false sends=0',
-                r'mail_gateway_runtime_pass source_sha=[a-f0-9]{40} running_image_ref=sha256:[a-f0-9]{64} built_config_digest=sha256:[a-f0-9]{64} uid=10001 ports=0 mounts=0 credentials=false networks=2 worker_direct_egress_denied=true',
-                r'mail_gateway_(?:preflight|runtime)_failed stage=(?:identity|routes|direct_denial|alias|tls|credentials|networks|worker_denial|tls_probe|receipt)']
+                r'mail_gateway_runtime_pass source_sha=[a-f0-9]{40} running_image_ref=sha256:[a-f0-9]{64} built_config_digest=sha256:[a-f0-9]{64} uid=10001 ports=0 mounts=0 credentials=false networks=2 memory_bytes=67108864 nano_cpus=100000000 pids=16 nnp=true worker_direct_egress_denied=true',
+                r'mail_gateway_(?:preflight|runtime)_failed stage=(?:identity|routes|direct_denial|alias|tls|credentials|networks|resource_bounds|worker_denial|tls_probe|receipt)']
             for item in logs:
                 if not isinstance(item,dict): continue
                 output=item.get('output')
