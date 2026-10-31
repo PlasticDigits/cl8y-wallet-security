@@ -18,7 +18,7 @@ async fn dispatch(app: &App) -> anyhow::Result<()> {
     // One claim immediately before each send; no serially waiting leased batch.
     // Only persisted Resend sends have an idempotency primitive. SMTP, Telegram and
     // unknown transports cannot be replayed after a crashed/expired in-flight send.
-    sqlx::query("UPDATE notification_outbox SET state='failed',last_error_code='delivery_uncertain',locked_until=NULL WHERE state='sending' AND locked_until<now() AND (created_at<now()-interval '23 hours' OR delivery_transport IS DISTINCT FROM 'resend')").execute(&app.db).await?;
+    sqlx::query("UPDATE notification_outbox SET state='failed',last_error_code='delivery_uncertain',locked_until=NULL WHERE state IN ('pending','blocked','sending') AND ((delivery_transport='resend' AND first_attempt_at<now()-interval '23 hours') OR (state='sending' AND locked_until<now() AND delivery_transport IS DISTINCT FROM 'resend'))").execute(&app.db).await?;
     for _ in 0..20 {
         let lease = Uuid::new_v4();
         let Some(row) = claim(app, lease).await? else {
@@ -70,7 +70,7 @@ async fn dispatch(app: &App) -> anyhow::Result<()> {
                         "payload_decrypt_failed",
                     ]
                     .contains(&code);
-                sqlx::query("UPDATE notification_outbox SET state=$2,last_error_code=$3,locked_until=NULL,next_attempt_at=now()+make_interval(secs=>$4),attempts=CASE WHEN $5 THEN attempts-1 ELSE attempts END WHERE id=$1 AND lease_id=$6 AND state='sending'")
+                sqlx::query("UPDATE notification_outbox SET state=$2,last_error_code=$3,locked_until=NULL,next_attempt_at=now()+make_interval(secs=>$4),attempts=CASE WHEN $5 THEN attempts-1 ELSE attempts END,first_attempt_at=CASE WHEN $5 AND attempts=1 THEN NULL ELSE first_attempt_at END,delivery_transport=CASE WHEN $5 AND attempts=1 THEN NULL ELSE delivery_transport END WHERE id=$1 AND lease_id=$6 AND state='sending'")
     .bind(id).bind(if failed{"failed"}else if blocked{"blocked"}else{"pending"}).bind(if uncertain_delivery(transport.as_deref().unwrap_or(""),code){"delivery_uncertain"}else{code}).bind(if blocked{300.0}else{backoff(attempts) as f64}).bind(blocked).bind(lease).execute(&app.db).await?;
             }
         }
@@ -80,7 +80,7 @@ async fn dispatch(app: &App) -> anyhow::Result<()> {
     Ok(())
 }
 pub(crate) async fn claim(app: &App, lease: Uuid) -> anyhow::Result<Option<sqlx::postgres::PgRow>> {
-    Ok(sqlx::query("UPDATE notification_outbox o SET state='sending',attempts=attempts+1,locked_until=now()+interval '2 minutes',lease_id=$1,delivery_transport=COALESCE(delivery_transport,(SELECT CASE WHEN c.kind='email' THEN $2 ELSE 'telegram' END FROM contacts c WHERE c.id=o.contact_id)) WHERE id=(SELECT id FROM notification_outbox WHERE ((state IN ('pending','blocked') AND next_attempt_at<=now()) OR (state='sending' AND locked_until<now() AND created_at>now()-interval '23 hours' AND delivery_transport='resend')) AND attempts<8 ORDER BY CASE WHEN template='timer_start' THEN 0 ELSE 1 END,created_at LIMIT 1 FOR UPDATE SKIP LOCKED) RETURNING id,event_id,contact_id,template,encrypted_payload,attempts,delivery_transport").bind(lease).bind(notifications::email_transport()).fetch_optional(&app.db).await?)
+    Ok(sqlx::query("UPDATE notification_outbox o SET state='sending',attempts=attempts+1,locked_until=now()+interval '2 minutes',lease_id=$1,first_attempt_at=COALESCE(first_attempt_at,now()),delivery_transport=COALESCE(delivery_transport,(SELECT CASE WHEN c.kind='email' THEN $2 ELSE 'telegram' END FROM contacts c WHERE c.id=o.contact_id)) WHERE id=(SELECT id FROM notification_outbox WHERE ((state IN ('pending','blocked') AND next_attempt_at<=now() AND (delivery_transport IS DISTINCT FROM 'resend' OR first_attempt_at IS NULL OR first_attempt_at>now()-interval '23 hours')) OR (state='sending' AND locked_until<now() AND first_attempt_at>now()-interval '23 hours' AND delivery_transport='resend')) AND attempts<8 ORDER BY CASE WHEN template='timer_start' THEN 0 ELSE 1 END,created_at LIMIT 1 FOR UPDATE SKIP LOCKED) RETURNING id,event_id,contact_id,template,encrypted_payload,attempts,delivery_transport,first_attempt_at").bind(lease).bind(notifications::email_transport()).fetch_optional(&app.db).await?)
 }
 pub async fn tick(app: &App) -> anyhow::Result<()> {
     crate::chain::fanout(app).await?;

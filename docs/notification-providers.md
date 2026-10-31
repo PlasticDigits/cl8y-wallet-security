@@ -72,7 +72,12 @@ enabled by this provider source PR.
 The worker remains on private networks, and the relay has its own outbound
 network with no unrelated apps. API receives only `EMAIL_PROVIDER` and the
 nonsecret `MAILU_EMAIL_ENABLED` readiness flag. Only worker receives
-`MAILU_SMTP_TOKEN`. No new worker is created. Integrating the overlay requires
+`MAILU_SMTP_TOKEN` and an explicit `MAILU_DELIVERY_ENABLED=true` switch.
+The worker fails closed without that exact enable value, even if a token was
+injected. `MAILU_EMAIL_ENABLED` controls API readiness only; it is not the worker
+kill switch. For credential-bearing staged checks keep worker delivery disabled,
+or explicitly enable it with an owned-only `NOTIFICATION_SANDBOX_DESTINATIONS`
+allowlist. No new worker is created. Integrating the overlay requires
 independent review of the exact source/image, generated network boundaries and
 the deployment owner's existing runtime PostgreSQL hostname hook. Never replace
 that hook or put worker onto the shared proxy network.
@@ -81,7 +86,7 @@ Before enablement the deployment owner must prove the actual source IP observed
 at Mailu using non-authenticated TCP/STARTTLS traffic. Public ingress DNS is not
 that proof, especially if VPN routing changes the source. After review, replace
 only this owned token's TEST-NET AuthorizedIP with the verified exact source,
-enable only this mailbox, inject only the scoped token into worker runtime, and
+enable only this mailbox, inject only the scoped token into worker runtime with delivery disabled, and
 verify permitted fixed SMTP and denied unrelated egress from the actual worker
 network. Keep `MAILU_EMAIL_ENABLED=false` until an explicit owned/sandbox
 delivery check and fresh independent review pass. Use
@@ -89,11 +94,16 @@ delivery check and fresh independent review pass. Use
 never send to real recipients as an operator test. The live deployment is not
 modified by preparing this source or mailbox.
 
-Migration 6 persists the first attempted transport, including classification of
-attempted legacy rows as their original Resend/Telegram mode. Blocked rows that
+Migration 6 persists the first attempted transport and attempt timestamp, including
+classification of attempted legacy rows as their original Resend/Telegram mode
+with conservative created-at timestamps. Blocked rows that
 have never attempted a configured send remain eligible for initial transport
 selection. SMTP/Telegram expired leases fail with `delivery_uncertain`; only
-Resend is reclaimable within its deduplication window. Changing a provider never
+Resend is reclaimable within 23 hours of its persisted first attempt. This bound
+also applies to pending/blocked retries after downtime or provider switching;
+aged attempted rows become terminal uncertainty. Known pre-send sandbox/config
+blocks clear initial provisional transport/timestamp selection, consume no
+attempt, and remain eligible for a later first send. Changing a provider never
 replays a pinned item on the replacement. Do not roll back to a worker unaware
 of migration 6 after SMTP is enabled; preserve and inspect uncertain outcomes.
 

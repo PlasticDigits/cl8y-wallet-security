@@ -9,7 +9,8 @@ pub const HOST: &str = "mail.cl8y.com";
 pub const SENDER: &str = "wallet-security-notices@cl8y.com";
 
 pub fn ready() -> bool {
-    env::var("MAILU_SMTP_TOKEN").is_ok_and(|v| !v.is_empty())
+    env::var("MAILU_DELIVERY_ENABLED").as_deref() == Ok("true")
+        && env::var("MAILU_SMTP_TOKEN").is_ok_and(|v| !v.is_empty())
 }
 
 fn message(destination: &str, text: &str, id: &str) -> Result<Message, &'static str> {
