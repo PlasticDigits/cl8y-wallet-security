@@ -91,7 +91,7 @@ def main():
     start_suffix = ' postgres' if args.postgres_only else ''
     # Raw-mode custom start runs inside the builder. Its env/file flags must be
     # relative there, while bind sources resolve against the preserved HOST repo.
-    start = ('docker compose --env-file .env -f compose.yml --project-directory '
+    start = ('timeout 180 docker compose --env-file .env -f compose.yml --project-directory '
              '/data/coolify/applications/' + args.app + ' --project-name ' + args.app
              + ' up -d --no-build' + start_suffix)
     api('PATCH', '/applications/' + args.app, {
@@ -100,7 +100,7 @@ def main():
         'is_auto_deploy_enabled': False, 'is_preview_deployments_enabled': False,
         'inject_build_args_to_dockerfile': False, 'redact_all_env_values_in_logs': True,
         'include_coolify_default_variables': False,
-        'docker_compose_custom_build_command': 'docker compose build ' + build_service,
+        'docker_compose_custom_build_command': 'timeout 900 docker compose build ' + build_service,
         'docker_compose_custom_start_command': start})
     actual = api('GET', '/applications/' + args.app)
     settings = actual.get('settings', {})
