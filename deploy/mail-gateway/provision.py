@@ -59,6 +59,7 @@ def observer_record(line):
     except (ValueError,TypeError): return False
     if not isinstance(row,dict): return False
     schemas={
+      'gateway_reproduction_created':({'record','id'},),
       'gateway_capture_state':({'record','id','running'},),
       'container':({'record','role','present'}, {'record','role','present','id','image_ref','user','running','network_mode','memory','nano_cpus','pids_limit','read_only','cap_drop_csv','security_opt_csv','nnp','mount_count'}),
       'mount':({'record','role','type','name','destination','rw'},),
@@ -134,7 +135,7 @@ def main():
             logs=deployment.get('logs',[])
             if isinstance(logs,str): logs=json.loads(logs)
             if not isinstance(logs,list): raise RuntimeError('logs_shape_invalid')
-            patterns=[r'gateway_topology_capture_complete running=(?:true|false)',r'gateway_topology_(?:capture_failed|cleanup_owned_stopped_retained=true|cleanup_failed|cleanup_identity_refused|preexisting_container_refused|exact44_raw_verified|diagnostic_complete_not_runtime_acceptance=true|structural_guards_pass_not_delivery=true)',r'observer_(?:read_only_complete_service_changes=false|fixed_metadata_failed)', r'mail_gateway_build_hook_entered', r'mail_gateway_image_inputs_verified', r'mail_gateway_tls_window start_utc=[0-9]{8}T[0-9]{6}Z end_utc=[0-9]{8}T[0-9]{6}Z ehlo=cl8y-gateway-[0-9]{8}T[0-9]{6}Z-[a-f0-9]{8}', r'mail_gateway_preflight_pass uid=10001 no_default_route=true alias_private=true hostname_verified=true direct_mailu_denied=true other_targets_denied=true auth=false sends=0',
+            patterns=[r'gateway_topology_capture_complete running=(?:true|false)',r'gateway_topology_(?:capture_failed|cleanup_owned_stopped_retained=true|cleanup_failed|cleanup_lookup_failed|cleanup_identity_refused|absence_query_failed|preexisting_container_refused|exact44_raw_verified|diagnostic_complete_not_runtime_acceptance=true|structural_guards_pass_not_delivery=true)',r'observer_(?:read_only_complete_service_changes=false|fixed_metadata_failed)', r'mail_gateway_build_hook_entered', r'mail_gateway_image_inputs_verified', r'mail_gateway_tls_window start_utc=[0-9]{8}T[0-9]{6}Z end_utc=[0-9]{8}T[0-9]{6}Z ehlo=cl8y-gateway-[0-9]{8}T[0-9]{6}Z-[a-f0-9]{8}', r'mail_gateway_preflight_pass uid=10001 no_default_route=true alias_private=true hostname_verified=true direct_mailu_denied=true other_targets_denied=true auth=false sends=0',
                 r'mail_gateway_runtime_pass source_sha=[a-f0-9]{40} running_image_ref=sha256:[a-f0-9]{64} built_config_digest=sha256:[a-f0-9]{64} uid=10001 ports=0 mounts=0 credentials=false networks=2 memory_bytes=67108864 nano_cpus=100000000 pids=16 nnp=true worker_direct_egress_denied=true',
                 r'mail_gateway_(?:preflight|runtime)_failed stage=(?:identity|routes|direct_denial|alias|tls|credentials|networks|network_names|network_internal|network_members|resource_bounds|worker_denial|tls_probe|receipt)']
             for item in logs:

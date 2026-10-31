@@ -103,7 +103,11 @@ it from memory with a public source value and `/dev/null` env-file. No normal
 preview, credentials, worker attachment, network repair, proxy settings, image
 build or TLS/AUTH/send is used.
 
-The fixed gateway must be absent before the action. While the newly created
+A successful exact-name, no-truncation daemon inventory must prove absence
+before creation intent; a failed read never means absence. The newly created
+CID is retained in memory and cleanup checks that CID, app project, scope,
+declared image and source-44 label. Partial-create fallback uses the same gates
+and bounded reads. The fixed gateway must be absent before the action. While the newly created
 owned gateway is alive, `capture.sh` emits closed network name/ID/internal/member
 and alias records before assertions. Unknown member identities are redacted.
 The existing identity, privilege, exact-network, resource and direct-worker-
