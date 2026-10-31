@@ -1,8 +1,8 @@
 {
   "acceptance_gates": {
     "chain_registry": "unconfigured",
-    "contact_key_recovery": "unverified; deployment owner continuation",
-    "external_wallet_extension_signing": "not tested",
+    "contact_key_recovery": "verified by fresh scoped OpenBao read and owned AESGCM/age recovery; separate receipt",
+    "external_wallet_extension_signing": "Station 8.0.9 login verified in supplemental receipt; other wallet versions, add-wallet, hardware and chain signing unverified",
     "offhost_encrypted_backup": "unverified; deployment owner continuation",
     "real_notification_sends": "disabled"
   },
@@ -96,5 +96,9 @@
     "worker_route_count": 1,
     "worker_uid_10001": true
   },
-  "workload_source_sha": "e44569e45b15dbee4b0347dff742f92bd85bedb2"
+  "workload_source_sha": "e44569e45b15dbee4b0347dff742f92bd85bedb2",
+  "supplemental_evidence": {
+    "contact_key_recovery": "deploy/receipts/2026-10-31-key-custody-e44569e.json",
+    "real_station_login": "frontend/evidence/station-login-2026-10-31.json"
+  }
 }
