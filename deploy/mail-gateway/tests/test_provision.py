@@ -20,6 +20,8 @@ class Scope(unittest.TestCase):
   build,start=m.commands('a'*32,SHA)
   self.assertLessEqual(max(len(build.encode()),len(start.encode())),255)
   self.assertNotIn('up -d',start)
+  self.assertNotIn('--env-file',build)
+  self.assertIn('SOURCE_SHA='+SHA,build)
  def test_refuses_portal_before_api_mutation(self):
   with patch.object(m,'api') as api:
    with self.assertRaisesRegex(RuntimeError,'portal_refused'):m.owned(m.PORTAL)
