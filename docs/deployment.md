@@ -121,3 +121,62 @@ network (no shared application network or published ports), inject provider
 credentials only through Coolify, and verify both permitted and denied egress.
 Do not merely attach the worker to the shared `coolify` network. Keep independent final
 security/deployment acceptance open until these checks pass on the final SHA.
+
+## Off-host capture and incident recovery
+
+The separate sealer is public-recipient-only, uid999, read-only root, no
+capabilities or network, with the portal's dump volume mounted read-only. Its
+framework-resolved output volume must be bound to actual daemon Mount.Name and
+RW flags; the raw requested name alone is insufficient. The current confirmed
+mapping is retained only in private operator metadata. Only one completed age
+cipher/checksum pair is kept. `pause` acknowledges quiescence only after commit
+and validates header/hash/source age <=25h; pause flags are tmpfs-only and never
+part of the archive. Every capture needs a fresh pause acknowledgement.
+
+The deployed Coolify native S3 helper passes storage credentials through its
+CLI/config mechanism. This workflow does not invoke it. Operator-only Boto3
+uses explicit credentials transiently in memory from the authorized platform,
+with SDK logging disabled and hash-locked dependencies. No S3/operator/private
+age/contact credential enters the sealer or temporary transport. A separate
+reviewed temporary transport may receive only a scoped, expiring ciphertext-read
+capability through protected runtime ENV and operator header. Platform-managed
+runtime secret storage is distinct from unmanaged local credential files.
+
+Uploads require a per-volume private-KV CAS lease plus local process lock,
+completed fresh pair, exact resource/context/image/volume binding, private-only
+transport and complete ciphertext SHA256 validation BEFORE S3. An independent
+operator-KV cipher ledger binds source/migration/hash outside the S3 write
+boundary. Content-addressed objects are not rewritten just to refresh their age.
+The destination must be a NEW owned private never-versioned bucket: four-day
+expiry eligibility, one-day aborted multipart cleanup, full policy readback,
+and no shared-bucket lifecycle changes. UTC rounding and provider asynchronous
+execution mean expiry eligibility is not a promise of exact physical deletion.
+Only the latest inner dump avoids nested retention amplification.
+
+The intended conditional export schedule runs through the operator's existing
+broker on the BB server/workstation, rather than placing broad credentials in a
+workload. Its source/runtime/automation activation is separately gated. This
+requires that operator host and VPN be online; off-host RPO is at least the daily
+cadence plus any operator-host outage. Server-side daily local dumps continue
+independently. Stale/no completed pair, cleanup or policy failures must fail
+visibly and remain owned by the deployment thread, never become a human
+monitoring chore. No one-off export establishes unattended coverage.
+
+Off-host restore proof downloads only the exact owned object, verifies its full
+cipher hash against the independent KV ledger, retrieves recovery material
+fresh from the scoped vault, and passes the private age identity by inherited
+pipe only. It restores into an offline disposable PostgreSQL container with no
+published ports or API/delivery/chain workers, compares every SQLx version and
+checksum to the pinned source, and removes the scratch resource. A contact-key
+canary is owned and exists only in scratch; it is not evidence of real recipient
+delivery or real-user contact recovery.
+
+A real incident promotion remains fenced: outbound and mutating API stay off
+until the lost-state window and current authoritative chain state are
+reconciled. Invalidate ALL restored sessions/challenges and one-use contact
+pairing/verification tokens. Preserve original deadlines, attempts, delivery
+uncertainty and other audit evidence. Wall-clock maturity alone must not resume
+old profile/contact changes; require fresh authorized confirmation when state is
+uncertain. Do not replay uncertain outbox items automatically. Never run a pre-6
+worker against a database containing SMTP transport rows. These are recovery
+procedures, not mutations to current live authentication or state during drills.
