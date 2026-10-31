@@ -1,6 +1,7 @@
 mod admission;
 mod assignments;
 mod auth;
+mod chain;
 mod notifications;
 mod worker;
 use axum::{
@@ -58,11 +59,6 @@ impl IntoResponse for Error {
         (self.0, Json(json!({"error":self.1}))).into_response()
     }
 }
-impl App {
-    pub fn chain(&self) -> Value {
-        json!({"status":"unavailable","chain_id":self.chain_id,"reason":"Verified contract deployment identities and reviewed ABI integration are not configured. Profile membership does not grant chain authority.","contracts":[]})
-    }
-}
 async fn health(State(app): State<App>) -> Result<Json<Value>> {
     let migration: i64 =
         sqlx::query_scalar("SELECT COALESCE(max(version),0) FROM _sqlx_migrations WHERE success")
@@ -83,7 +79,7 @@ async fn status(State(app): State<App>) -> Result<Json<Value>> {
     .await?;
     let worker=heartbeat.map(|r|json!({"last_seen":r.get::<chrono::DateTime<chrono::Utc>,_>("last_seen"),"source_sha":r.get::<String,_>("source_sha"),"detail":r.get::<Value,_>("detail")}));
     Ok(Json(
-        json!({"source_sha":app.source_sha,"chain":app.chain(),"notifications":{"delivery_enabled":notifications::email_ready()||notifications::telegram_ready(),"email_ready":notifications::email_ready(),"telegram_ready":notifications::telegram_ready(),"reason":"Only explicitly opted-in verified channels receive notices; provider credentials gate delivery."},"worker":worker}),
+        json!({"source_sha":app.source_sha,"chain":chain::status(&app).await,"notifications":{"delivery_enabled":notifications::email_ready()||notifications::telegram_ready(),"email_ready":notifications::email_ready(),"telegram_ready":notifications::telegram_ready(),"reason":"Only explicitly opted-in verified channels receive notices; provider credentials gate delivery."},"worker":worker}),
     ))
 }
 async fn me(State(app): State<App>, headers: HeaderMap) -> Result<Json<Value>> {
@@ -94,7 +90,7 @@ async fn me(State(app): State<App>, headers: HeaderMap) -> Result<Json<Value>> {
         Ok(s) => s,
         Err(Error(StatusCode::UNAUTHORIZED, _)) => {
             return Ok(Json(
-                json!({"authenticated":false,"wallets":[],"assignments":[],"contacts":[],"chain":app.chain(),"server_time":server_time}),
+                json!({"authenticated":false,"wallets":[],"assignments":[],"contacts":[],"chain":chain::status(&app).await,"server_time":server_time}),
             ))
         }
         Err(e) => return Err(e),
@@ -106,7 +102,7 @@ async fn me(State(app): State<App>, headers: HeaderMap) -> Result<Json<Value>> {
         .fetch_one(&app.db)
         .await?;
     Ok(Json(
-        json!({"authenticated":true,"csrf_token":s.csrf,"profile_id":s.profile_id,"anchor_wallet":s.anchor,"wallets":wallets,"assignments":assignments,"contacts":contacts,"chain":app.chain(),"server_time":server_time}),
+        json!({"authenticated":true,"csrf_token":s.csrf,"profile_id":s.profile_id,"anchor_wallet":s.anchor,"wallets":wallets,"assignments":assignments,"contacts":contacts,"chain":chain::status(&app).await,"server_time":server_time}),
     ))
 }
 #[tokio::main]
@@ -144,10 +140,23 @@ async fn main() -> anyhow::Result<()> {
         env::var("RUN_MIGRATIONS").as_deref() != Ok("true"),
         "migrations must use dedicated job"
     );
-    let applied: i64 = sqlx::query_scalar("SELECT count(*) FROM _sqlx_migrations WHERE success")
-        .fetch_one(&db)
-        .await?;
-    anyhow::ensure!(applied >= 2, "migrations required");
+    let migrations = sqlx::migrate!("./migrations");
+    let applied =
+        sqlx::query("SELECT version,checksum,success FROM _sqlx_migrations ORDER BY version")
+            .fetch_all(&db)
+            .await?;
+    anyhow::ensure!(
+        applied.len() == migrations.iter().count(),
+        "schema version mismatch"
+    );
+    for (row, migration) in applied.iter().zip(migrations.iter()) {
+        anyhow::ensure!(
+            row.get::<i64, _>("version") == migration.version
+                && row.get::<bool, _>("success")
+                && row.get::<Vec<u8>, _>("checksum").as_slice() == migration.checksum.as_ref(),
+            "schema integrity mismatch"
+        );
+    }
     let mut trusted_proxies = std::collections::HashSet::new();
     if mode == "api" {
         if let Ok(host) = env::var("TRUSTED_PROXY_HOST") {
@@ -173,6 +182,8 @@ async fn main() -> anyhow::Result<()> {
         return worker::run(app).await;
     }
     let routes=Router::new().route("/healthz",get(health)).route("/api/v1/status",get(status)).route("/api/v1/me",get(me))
+ .route("/api/v1/chain/wallet/{contract}/{wallet}",get(chain::wallet))
+ .route("/api/v1/chain/recovery/{contract}/{nonce}",get(chain::recovery))
  .route("/api/v1/auth/challenge",post(auth::challenge)).route("/api/v1/auth/verify",post(auth::verify)).route("/api/v1/auth/logout",post(auth::logout))
  .route("/api/v1/assignments",post(assignments::propose)).route("/api/v1/assignments/{id}/cancel",post(assignments::cancel))
  .route("/api/v1/contacts/email",post(notifications::email)).route("/api/v1/contacts/email/verify",post(notifications::verify_email))

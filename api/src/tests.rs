@@ -205,4 +205,54 @@ async fn postgres_replay_consent_outbox_concurrency() {
     worker::tick(&app).await.unwrap();
     let count:i64=sqlx::query_scalar("SELECT count(*) FROM notification_outbox WHERE contact_id=$1 AND state='blocked' AND attempts=0").bind(contact).fetch_one(&app.db).await.unwrap();
     assert_eq!(count, 2);
+    // Cross-profile destination verification cooldown and global quota are durable.
+    let mut tx = app.db.begin().await.unwrap();
+    let destination = format!("owned-{}@example.test", Uuid::new_v4());
+    assert!(
+        notifications::verification_budget(&app, &mut tx, &destination)
+            .await
+            .unwrap()
+    );
+    tx.commit().await.unwrap();
+    let mut tx = app.db.begin().await.unwrap();
+    assert!(
+        !notifications::verification_budget(&app, &mut tx, &destination.to_uppercase())
+            .await
+            .unwrap()
+    );
+    tx.commit().await.unwrap();
+    // Expired Telegram sends are never eligible for automatic reclaim, including mid-loop.
+    let telegram = Uuid::new_v4();
+    sqlx::query("INSERT INTO contacts(id,profile_id,kind,encrypted_destination,verified_at) VALUES($1,$2,'telegram',$3,now())").bind(telegram).bind(session.profile_id).bind(notifications::encrypt(&app,"owned-test-chat").unwrap()).execute(&app.db).await.unwrap();
+    let event = format!("lease-fixture:{}", Uuid::new_v4());
+    let mut tx = app.db.begin().await.unwrap();
+    notifications::record(
+        &mut tx,
+        &event,
+        session.profile_id,
+        "test_timer",
+        &address,
+        chrono::Utc::now(),
+        chrono::Utc::now() + chrono::Duration::hours(24),
+    )
+    .await
+    .unwrap();
+    tx.commit().await.unwrap();
+    sqlx::query("UPDATE notification_outbox SET state='sending',locked_until=now()-interval '1 second' WHERE event_id=$1").bind(&event).execute(&app.db).await.unwrap();
+    let lease = Uuid::new_v4();
+    let claim = worker::claim(&app, lease).await.unwrap().unwrap();
+    assert_ne!(claim.get::<Uuid, _>("contact_id"), telegram);
+    let item: Uuid = claim.get("id");
+    sqlx::query(
+        "UPDATE notification_outbox SET locked_until=now()-interval '1 second' WHERE id=$1",
+    )
+    .bind(item)
+    .execute(&app.db)
+    .await
+    .unwrap();
+    let new_lease = Uuid::new_v4();
+    let reclaimed = worker::claim(&app, new_lease).await.unwrap().unwrap();
+    assert_eq!(reclaimed.get::<Uuid, _>("id"), item);
+    assert_eq!(sqlx::query("UPDATE notification_outbox SET state='sent' WHERE id=$1 AND lease_id=$2 AND state='sending'").bind(item).bind(lease).execute(&app.db).await.unwrap().rows_affected(),0,"stale owner cannot acknowledge a reclaimed item");
+    chain::fixture_ingestion(&app, &address).await.unwrap();
 }

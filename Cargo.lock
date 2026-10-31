@@ -2333,6 +2333,7 @@ dependencies = [
  "bech32",
  "chrono",
  "hex",
+ "hmac",
  "k256",
  "rand 0.8.8",
  "reqwest",

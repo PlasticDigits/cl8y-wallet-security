@@ -18,3 +18,8 @@ GRANT SELECT,INSERT,UPDATE ON notification_outbox,chain_checkpoints,worker_heart
 GRANT SELECT ON ALL TABLES IN SCHEMA public TO security_backup;
 GRANT SELECT(expires_at) ON sessions TO security_worker;
 GRANT SELECT(created_at) ON challenges TO security_worker;
+GRANT UPDATE(token,chain_id,block_height,tx_hash,event_index) ON security_events TO security_worker;
+GRANT SELECT,INSERT,UPDATE ON controller_fanout TO security_worker;
+GRANT SELECT,INSERT,UPDATE ON verification_budget,verification_destinations TO security_api;
+GRANT SELECT ON verification_budget TO security_worker;
+GRANT SELECT,DELETE ON verification_destinations TO security_worker;

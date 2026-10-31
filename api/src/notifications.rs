@@ -56,8 +56,8 @@ pub async fn record(
 ) -> Result<()> {
     sqlx::query("INSERT INTO security_events(id,profile_id,action,wallet,proposed_at,executable_at) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT DO NOTHING")
  .bind(id).bind(profile).bind(action).bind(wallet).bind(start).bind(end).execute(&mut **tx).await?;
-    sqlx::query("INSERT INTO notification_outbox(id,event_id,contact_id) SELECT gen_random_uuid(),$1,id FROM contacts WHERE profile_id=$2 AND verified_at IS NOT NULL AND (activation_at IS NULL OR activation_at<=now()) AND deleted_at IS NULL AND (removal_at IS NULL OR removal_at>now()) ON CONFLICT DO NOTHING")
- .bind(id).bind(profile).execute(&mut **tx).await?;
+    sqlx::query("INSERT INTO notification_outbox(id,event_id,contact_id) SELECT gen_random_uuid(),$1,id FROM contacts WHERE profile_id=$2 AND verified_at<=$3 AND (activation_at IS NULL OR activation_at<=$3) AND deleted_at IS NULL AND (removal_at IS NULL OR removal_at>$3) ON CONFLICT DO NOTHING")
+ .bind(id).bind(profile).bind(start).execute(&mut **tx).await?;
     Ok(())
 }
 pub async fn list(app: &App, profile: Uuid) -> Result<Vec<Value>> {
@@ -99,6 +99,43 @@ async fn enqueue_verification(
 pub struct Email {
     address: String,
 }
+pub(crate) async fn verification_budget(
+    app: &App,
+    tx: &mut Transaction<'_, Postgres>,
+    destination: &str,
+) -> Result<bool> {
+    use hmac::{Hmac, Mac};
+    use sha2::Sha256;
+    let mut mac = <Hmac<Sha256> as Mac>::new_from_slice(app.contact_key.as_ref())
+        .map_err(|_| Error::bad("verification unavailable"))?;
+    mac.update(b"cl8y-contact-cooldown-v1\0");
+    mac.update(destination.to_lowercase().as_bytes());
+    let hash = hex::encode(mac.finalize().into_bytes());
+    sqlx::query("INSERT INTO verification_budget(id,day,accepted,rejected) VALUES(1,current_date,0,0) ON CONFLICT DO NOTHING").execute(&mut **tx).await?;
+    let global = sqlx::query(
+        "SELECT accepted,day=current_date AS today FROM verification_budget WHERE id=1 FOR UPDATE",
+    )
+    .fetch_one(&mut **tx)
+    .await?;
+    if !global.get::<bool, _>("today") {
+        sqlx::query("UPDATE verification_budget SET day=current_date,accepted=0 WHERE id=1")
+            .execute(&mut **tx)
+            .await?;
+    }
+    let rejected = global.get::<bool, _>("today") && global.get::<i32, _>("accepted") >= 500;
+    let cooldown:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM verification_destinations WHERE destination_hash=$1 AND next_allowed_at>now())").bind(&hash).fetch_one(&mut **tx).await?;
+    if rejected || cooldown {
+        sqlx::query("UPDATE verification_budget SET rejected=rejected+1 WHERE id=1")
+            .execute(&mut **tx)
+            .await?;
+        return Ok(false);
+    }
+    sqlx::query("INSERT INTO verification_destinations(destination_hash,next_allowed_at) VALUES($1,now()+interval '1 hour') ON CONFLICT(destination_hash) DO UPDATE SET next_allowed_at=EXCLUDED.next_allowed_at").bind(hash).execute(&mut **tx).await?;
+    sqlx::query("UPDATE verification_budget SET accepted=accepted+1 WHERE id=1")
+        .execute(&mut **tx)
+        .await?;
+    Ok(true)
+}
 pub async fn email(
     State(app): State<App>,
     headers: HeaderMap,
@@ -121,6 +158,11 @@ pub async fn email(
     }
     let mut tx = app.db.begin().await?;
     contact_admission(&mut tx, s.profile_id).await?;
+    if !verification_budget(&app, &mut tx, address).await? {
+        tx.commit().await?;
+        return Err(Error::limited());
+    }
+
     let id = Uuid::new_v4();
     let token = auth::random_token();
     sqlx::query("INSERT INTO contacts(id,profile_id,kind,encrypted_destination,consent_at) VALUES($1,$2,'email',$3,now())").bind(id).bind(s.profile_id).bind(encrypt(&app,address)?).execute(&mut *tx).await?;
@@ -317,8 +359,21 @@ pub async fn deliver(
     };
     let response = response.map_err(|_| "transport_failure")?;
     if response.status().is_success() {
+        let value: Value = response
+            .json()
+            .await
+            .map_err(|_| "provider_invalid_response")?;
+        let accepted = if kind == "telegram" {
+            value["ok"] == true && value["result"]["message_id"].as_i64().is_some()
+        } else {
+            value["id"].as_str().is_some()
+        };
         let _ = app;
-        Ok(())
+        if accepted {
+            Ok(())
+        } else {
+            Err("provider_rejected")
+        }
     } else if response.status().as_u16() == 429 {
         Err("provider_rate_limit")
     } else if response.status().is_server_error() {

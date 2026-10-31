@@ -65,9 +65,10 @@ async fn dispatch(app: &App) -> anyhow::Result<()> {
     Ok(())
 }
 pub(crate) async fn claim(app: &App, lease: Uuid) -> anyhow::Result<Option<sqlx::postgres::PgRow>> {
-    Ok(sqlx::query("UPDATE notification_outbox SET state='sending',attempts=attempts+1,locked_until=now()+interval '2 minutes',lease_id=$1 WHERE id=(SELECT id FROM notification_outbox WHERE ((state IN ('pending','blocked') AND next_attempt_at<=now()) OR (state='sending' AND locked_until<now())) AND attempts<8 ORDER BY CASE WHEN template='timer_start' THEN 0 ELSE 1 END,created_at LIMIT 1 FOR UPDATE SKIP LOCKED) RETURNING id,event_id,contact_id,template,encrypted_payload,attempts").bind(lease).fetch_optional(&app.db).await?)
+    Ok(sqlx::query("UPDATE notification_outbox SET state='sending',attempts=attempts+1,locked_until=now()+interval '2 minutes',lease_id=$1 WHERE id=(SELECT id FROM notification_outbox WHERE ((state IN ('pending','blocked') AND next_attempt_at<=now()) OR (state='sending' AND locked_until<now() AND created_at>now()-interval '23 hours' AND EXISTS(SELECT 1 FROM contacts c WHERE c.id=notification_outbox.contact_id AND c.kind='email'))) AND attempts<8 ORDER BY CASE WHEN template='timer_start' THEN 0 ELSE 1 END,created_at LIMIT 1 FOR UPDATE SKIP LOCKED) RETURNING id,event_id,contact_id,template,encrypted_payload,attempts").bind(lease).fetch_optional(&app.db).await?)
 }
 pub async fn tick(app: &App) -> anyhow::Result<()> {
+    crate::chain::fanout(app).await?;
     dispatch(app).await?;
     // Telegram update offset and pairing consumption commit together. No message body is logged.
     let telegram_ok = notifications::poll_telegram(app).await.is_ok();
@@ -88,24 +89,40 @@ pub async fn tick(app: &App) -> anyhow::Result<()> {
             .fetch_one(&mut *tx)
             .await?;
     let oldest:Option<DateTime<Utc>>=sqlx::query_scalar("SELECT min(created_at) FROM notification_outbox WHERE state IN ('pending','blocked','sending')").fetch_one(&mut *tx).await?;
+    let fanout_pending: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM controller_fanout WHERE completed_at IS NULL")
+            .fetch_one(&mut *tx)
+            .await?;
+    let rejected: Option<i64> =
+        sqlx::query_scalar("SELECT rejected FROM verification_budget WHERE id=1")
+            .fetch_optional(&mut *tx)
+            .await?;
     sqlx::query("INSERT INTO worker_heartbeats(name,last_seen,source_sha,detail) VALUES('notifications',now(),$1,$2) ON CONFLICT(name) DO UPDATE SET last_seen=now(),source_sha=EXCLUDED.source_sha,detail=EXCLUDED.detail")
- .bind(&app.source_sha).bind(json!({"email_ready":notifications::email_ready(),"telegram_ready":notifications::telegram_ready(),"telegram_poll_ok":telegram_ok,"pending":pending,"failed":failed,"oldest_pending":oldest,"chain_ingestion":"unconfigured"})).execute(&mut *tx).await?;
+ .bind(&app.source_sha).bind(json!({"email_ready":notifications::email_ready(),"telegram_ready":notifications::telegram_ready(),"telegram_poll_ok":telegram_ok,"pending":pending,"failed":failed,"oldest_pending":oldest,"controller_fanout_pending":fanout_pending,"verification_rejections":rejected.unwrap_or(0)})).execute(&mut *tx).await?;
     sqlx::query("DELETE FROM challenges WHERE created_at<now()-interval '7 days'")
         .execute(&mut *tx)
         .await?;
     sqlx::query("DELETE FROM sessions WHERE expires_at<now()-interval '1 day'")
         .execute(&mut *tx)
         .await?;
-    // Keep warned old destinations while any notice still needs them. Clear PII after 30 days.
-    sqlx::query("UPDATE contacts c SET encrypted_destination=decode('','hex'),deleted_at=COALESCE(deleted_at,now()) WHERE (removal_at<now()-interval '30 days' OR deleted_at<now()-interval '30 days' OR (verified_at IS NULL AND created_at<now()-interval '30 days')) AND octet_length(encrypted_destination)>0 AND NOT EXISTS(SELECT 1 FROM notification_outbox o WHERE o.contact_id=c.id AND o.state IN ('pending','sending','blocked'))").execute(&mut *tx).await?;
+    // Bounded PII retention: retain delivery outcomes, replace expired undelivered
+    // destination data with an explicit visible failure before cryptographic erasure.
+    sqlx::query("UPDATE notification_outbox o SET state='failed',last_error_code='contact_retention_expired',locked_until=NULL WHERE state IN ('pending','blocked','sending') AND EXISTS(SELECT 1 FROM contacts c WHERE c.id=o.contact_id AND (c.removal_at<now()-interval '30 days' OR c.deleted_at<now()-interval '30 days' OR (c.verified_at IS NULL AND c.created_at<now()-interval '30 days')))").execute(&mut *tx).await?;
+    sqlx::query("UPDATE contacts SET encrypted_destination=decode('','hex'),deleted_at=COALESCE(deleted_at,now()) WHERE (removal_at<now()-interval '30 days' OR deleted_at<now()-interval '30 days' OR (verified_at IS NULL AND created_at<now()-interval '30 days')) AND octet_length(encrypted_destination)>0").execute(&mut *tx).await?;
     sqlx::query("UPDATE notification_outbox SET encrypted_payload=NULL WHERE state IN ('failed','sent') AND created_at<now()-interval '1 day'").execute(&mut *tx).await?;
     sqlx::query("DELETE FROM contact_verifications WHERE expires_at<now()-interval '1 day'")
         .execute(&mut *tx)
         .await?;
+    sqlx::query(
+        "DELETE FROM verification_destinations WHERE next_allowed_at<now()-interval '1 day'",
+    )
+    .execute(&mut *tx)
+    .await?;
     tx.commit().await?;
     Ok(())
 }
 pub async fn run(app: App) -> anyhow::Result<()> {
+    tokio::spawn(crate::chain::run(app.clone()));
     let mut interval = tokio::time::interval(std::time::Duration::from_secs(15));
     loop {
         interval.tick().await;
