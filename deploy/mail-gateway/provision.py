@@ -48,7 +48,7 @@ def owned(app):
 def commands(app, sha):
     identifier(app)
     if app == PORTAL or not re.fullmatch('[a-f0-9]{40}',sha): raise RuntimeError('command_identity_invalid')
-    build='SOURCE_SHA='+sha+' timeout 55 docker compose -f deploy/mail-gateway/compose.yml build gateway'
+    build='set -o pipefail; curl --proto =https -fsSm 10 https://git.cl8y.com/code/cl8y-wallet-security/raw/commit/'+sha+'/deploy/mail-gateway/build.sh | timeout 55 bash -s -- '+sha
     start='timeout 65 bash deploy/mail-gateway/launch.sh '+app+' '+sha
     if max(len(build.encode()),len(start.encode())) > 255: raise RuntimeError('command_bound')
     return build,start

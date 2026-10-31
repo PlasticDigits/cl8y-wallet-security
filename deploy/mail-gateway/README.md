@@ -36,7 +36,11 @@ only environment variable. Neither the operator token nor an SSH key enters the
 image, resource environment, runtime mounts or logs. Every API response remains
 in memory; only closed resource IDs/status/receipt formats are printed.
 
-The custom start executes `runtime-check.sh` in the authorized builder, whose
+The short custom build fetches only its immutable public SHA hook over HTTPS,
+verifies the checked-out Git HEAD, and invokes a fixed direct Docker build with
+only public SOURCE_SHA. This avoids Coolify Compose-command rewriting and
+working-directory env-file assumptions. Generated env files are excluded from
+the build context. The custom start executes `runtime-check.sh` in the authorized builder, whose
 Docker management interface is never mounted into gateway/probe workloads.
 It verifies actual container source labels and binds its running image reference
 to a no-start create from the newly built tag on that same daemon. The receipt
