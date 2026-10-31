@@ -80,7 +80,7 @@ scratch database causes a failure rather than an overwrite. Its bootstrap
 credential never reaches API/worker. Preserve the job exit result as evidence.
 For the focused disposable storage check, build the final image with its exact
 `SOURCE_SHA` label, then run `python3 deploy/check-storage.py --image IMAGE --sha SHA
---migration 5`. This uses the image's real SQLx migrator and grants, compares the
+--migration 6`. This uses the image's real SQLx migrator and grants, compares the
 complete successful version/checksum history to exact pinned Git objects,
 checks runtime DDL/history/session-write denials, and performs backup/restore.
 It publishes no ports and removes only its randomly named sandbox resources.

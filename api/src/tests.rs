@@ -238,7 +238,7 @@ async fn postgres_replay_consent_outbox_concurrency() {
     .await
     .unwrap();
     tx.commit().await.unwrap();
-    sqlx::query("UPDATE notification_outbox SET state='sending',locked_until=now()-interval '1 second' WHERE event_id=$1").bind(&event).execute(&app.db).await.unwrap();
+    sqlx::query("UPDATE notification_outbox o SET state='sending',delivery_transport=CASE WHEN c.kind='email' THEN 'resend' ELSE 'telegram' END,locked_until=now()-interval '1 second' FROM contacts c WHERE c.id=o.contact_id AND o.event_id=$1").bind(&event).execute(&app.db).await.unwrap();
     let lease = Uuid::new_v4();
     let claim = worker::claim(&app, lease).await.unwrap().unwrap();
     assert_ne!(claim.get::<Uuid, _>("contact_id"), telegram);
@@ -254,5 +254,19 @@ async fn postgres_replay_consent_outbox_concurrency() {
     let reclaimed = worker::claim(&app, new_lease).await.unwrap().unwrap();
     assert_eq!(reclaimed.get::<Uuid, _>("id"), item);
     assert_eq!(sqlx::query("UPDATE notification_outbox SET state='sent' WHERE id=$1 AND lease_id=$2 AND state='sending'").bind(item).bind(lease).execute(&app.db).await.unwrap().rows_affected(),0,"stale owner cannot acknowledge a reclaimed item");
+    // SMTP remains non-reclaimable even if the process/provider configuration changes.
+    sqlx::query("UPDATE notification_outbox SET delivery_transport='smtp',locked_until=now()-interval '1 second' WHERE id=$1").bind(item).execute(&app.db).await.unwrap();
+    assert!(worker::claim(&app, Uuid::new_v4()).await.unwrap().is_none());
+    worker::tick(&app).await.unwrap();
+    let outcome = sqlx::query("SELECT state,last_error_code FROM notification_outbox WHERE id=$1")
+        .bind(item)
+        .fetch_one(&app.db)
+        .await
+        .unwrap();
+    assert_eq!(outcome.get::<String, _>("state"), "failed");
+    assert_eq!(
+        outcome.get::<String, _>("last_error_code"),
+        "delivery_uncertain"
+    );
     chain::fixture_ingestion(&app, &address).await.unwrap();
 }

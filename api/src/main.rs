@@ -3,6 +3,7 @@ mod assignments;
 mod auth;
 mod chain;
 mod notifications;
+mod smtp;
 mod worker;
 use axum::{
     extract::State,
