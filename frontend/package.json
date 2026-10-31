@@ -14,5 +14,11 @@
     "@playwright/test": "1.64.1",
     "typescript": "6.0.3",
     "vite": "8.3.5"
+  },
+  "dependencies": {
+    "@cosmjs/amino": "0.38.1",
+    "@cosmjs/cosmwasm-stargate": "0.38.1",
+    "@cosmjs/stargate": "0.38.1",
+    "@cosmjs/tendermint-rpc": "0.38.1"
   }
 }

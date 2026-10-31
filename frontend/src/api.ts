@@ -24,6 +24,12 @@ export type ChainStatus = {
   chain_id: string;
   reason: string;
   contracts: unknown[];
+  rpc_url?: string;
+  lcd_url?: string;
+  controller?: string;
+  abi_sha?: string;
+  gas_price?: string | null;
+  gas_adjustment?: number | null;
 };
 export type Me = {
   authenticated: boolean;
