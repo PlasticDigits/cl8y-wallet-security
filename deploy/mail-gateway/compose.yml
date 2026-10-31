@@ -1,0 +1,27 @@
+name: wallet-security-mail-gateway
+services:
+  gateway:
+    build:
+      context: .
+      args: {SOURCE_SHA: '${SOURCE_SHA:?}'}
+    image: wallet-security-mail-gateway:${SOURCE_SHA:?}
+    container_name: wallet-security-mail-gateway
+    user: '10001:10001'
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    restart: unless-stopped
+    mem_limit: 64m
+    cpus: 0.1
+    pids_limit: 16
+    logging: {driver: none}
+    labels:
+      traefik.enable: 'false'
+      com.cl8y.scope: wallet-security-mail-gateway
+    healthcheck: {disable: true}
+    networks:
+      notification: {aliases: [mail.cl8y.com]}
+      outbound: {}
+networks:
+  notification: {internal: true, name: wallet-security-notification}
+  outbound: {name: wallet-security-mailu-outbound}
