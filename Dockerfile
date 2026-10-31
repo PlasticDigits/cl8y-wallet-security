@@ -26,4 +26,4 @@ ENV WEB_ROOT=/app/frontend/dist
 USER 10001:10001
 EXPOSE 8080
 HEALTHCHECK --interval=20s --timeout=5s --start-period=30s --retries=3 CMD ["/bin/bash", "/app/deploy/healthcheck.sh"]
-ENTRYPOINT ["/app/wallet-security-api"]
+ENTRYPOINT ["/bin/bash", "/app/deploy/entrypoint.sh"]
