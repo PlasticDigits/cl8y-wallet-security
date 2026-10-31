@@ -13,6 +13,9 @@ logs no stream data. Independent public DNS and hostname-verified STARTTLS
 confirmed this fixed endpoint is `mail.cl8y.com`; the backend never resolves the
 private `mail.cl8y.com` alias, preventing recursive forwarding.
 
+Labels use a string sequence so Coolify can append its managed labels without
+introducing numeric mapping keys. The explicit Traefik disable remains present.
+
 The gateway alone joins new networks `wallet-security-notification` (internal,
 with alias `mail.cl8y.com`) and `wallet-security-mailu-outbound` (outbound).
 It has no published ports, mounts, socket, credentials, capabilities or writable
