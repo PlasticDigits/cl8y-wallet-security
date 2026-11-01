@@ -148,3 +148,20 @@ start settings stay preserved; restore configuration only after collection.
 Stopped pre-start admission also checks actual memory, CPU, PID and exact
 no-new-privileges settings; resource drift is refused before the retained
 container is resumed, as well as during the later live guard pass.
+
+The one independently cleared source9fd job actually ran on 2026-10-31. Its
+recovered bounded receipts are in
+`deploy/receipts/2026-10-31-gateway-noauth-9fd9cc4.json`: all identity, bounds,
+network, worker-denial and noAUTH TLS checks passed; the same gateway stopped
+and remained retained, and the owned probes were removed. The intentional failed
+job did not activate a persistent release. These are historical receipts, not a
+fresh runtime/custody verification after the workstation restart.
+
+`ops/notifications/receiver-metadata.py` reads only bounded Mailu front logs
+for this exact prior window. It emits closed transport/process/address-role
+metadata, never raw lines, unknown addresses, recipients or sessions. An owned
+address in a local/upstream field does not establish the remote peer. The reader
+always leaves source-IP clearance false for independent review. If log retention
+no longer covers the window, the evidence is missing; no additional connection
+or gateway start is implied. Sender/token scope, AUTH, delivery and worker
+attachment remain separately gated.

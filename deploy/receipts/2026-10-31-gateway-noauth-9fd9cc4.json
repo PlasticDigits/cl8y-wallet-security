@@ -1,0 +1,52 @@
+{
+  "record": "recovered_gateway_noauth_preflight",
+  "evidence_date_utc": "2026-10-31",
+  "recovered_date_utc": "2026-11-01",
+  "origin_thread": "thr_ywz2dcyd3p",
+  "origin_receipt_event_seq": 4093,
+  "origin_receiver_metadata_event_seq": 4213,
+  "application_uuid": "y08cgj4rjem3ldgfmxb11nsp",
+  "deployment_uuid": "oqghicv2rzlscimmgel2twfs",
+  "ops_source": "9fd9cc4c1dfd3014783906c376cb436e518fe4a0",
+  "workload_source": "44a2d3604b2051278aafcfa80fa4e19f4eb6c1d5",
+  "retained_cid": "643b1cc6f975dc11dbae9f3de7e8576b5922b502f3147ec6d076c7aea8902886",
+  "running_image_ref": "sha256:e6c3498ae4e1ccc7428e28aa31ff3dbd46f49ee8430a92e6fdd2a0c5fd59e79c",
+  "intentional_terminal_status": "failed_before_normal_release",
+  "prestart_identity_and_bounds_verified": true,
+  "fixed_network_identity_verified": true,
+  "live_structural_and_worker_denial_guards_passed": true,
+  "tls_window": {
+    "start_utc": "2026-10-31T07:07:07Z",
+    "end_utc": "2026-10-31T07:07:08Z",
+    "ehlo": "cl8y-gateway-20261031T070707Z-2310c2c0"
+  },
+  "probe": {
+    "uid": 10001,
+    "no_default_route": true,
+    "private_alias": true,
+    "hostname_verified": true,
+    "direct_mailu_denied": true,
+    "other_targets_denied": true,
+    "auth": false,
+    "sends": 0
+  },
+  "cleanup": {
+    "owned_gateway_stopped_and_retained": true,
+    "probe_removed": true,
+    "binding_probe_removed": true,
+    "normal_source44_configuration_restored_without_start": true
+  },
+  "receiver_metadata": {
+    "owned_window_utc": "2026-10-31T07:07:08.139508Z",
+    "known_owned_host_address_present": true,
+    "tls_present": true,
+    "port587_present": true,
+    "explicit_peer_role_proven": false,
+    "source_ip_cleared": false
+  },
+  "persistent_gateway_activation": false,
+  "worker_attached": false,
+  "sender_enabled": false,
+  "provider_delivery_accepted": false,
+  "current_runtime_and_custody_reverified_after_restart": false
+}
