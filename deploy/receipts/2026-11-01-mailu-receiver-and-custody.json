@@ -1,0 +1,52 @@
+{
+  "record": "owned_mailu_receiver_and_disabled_custody_review",
+  "retrieval_date_utc": "2026-11-01",
+  "reader_source": "b4859543a15d5ccd24146c051cda46c63b0e8a0f",
+  "reader_command": "bao-exec --only COOLIFY_WIRE_TOKEN,COOLIFY_URL -- python3 ops/notifications/receiver-metadata.py",
+  "historical_trial": {
+    "deployment_uuid": "oqghicv2rzlscimmgel2twfs",
+    "ops_source": "9fd9cc4c1dfd3014783906c376cb436e518fe4a0",
+    "workload_source": "44a2d3604b2051278aafcfa80fa4e19f4eb6c1d5",
+    "start_utc": "2026-10-31T07:07:07Z",
+    "end_utc": "2026-10-31T07:07:08Z",
+    "ehlo": "cl8y-gateway-20261031T070707Z-2310c2c0"
+  },
+  "receiver": {
+    "window_covered": true,
+    "timestamped_rows": 2000,
+    "owned_window_rows": [{
+      "receiver_utc": "2026-10-31T07:07:08.139508+00:00",
+      "process": "submission-login",
+      "address_roles": [
+        {"field": "rip", "role": "owned_gateway_host"},
+        {"field": "lip", "role": "redacted"}
+      ],
+      "port_fields": [
+        {"field": "rport", "is_587": false},
+        {"field": "lport", "is_587": true}
+      ],
+      "tls": true,
+      "no_auth_attempts": true,
+      "connection_closed": true
+    }],
+    "known_owned_gateway_host": "168.119.120.255",
+    "independent_review_clears_historical_peer_role": true,
+    "fresh_runtime_or_route_trial": false,
+    "raw_logs_or_unrelated_addresses_emitted": false
+  },
+  "current_custody": {
+    "inspection_source_short": "df6a9c6",
+    "inspection_command": "bao-exec --only COOLIFY_WIRE_TOKEN,COOLIFY_URL -- python3 ops/notifications/inspect-mailu.py",
+    "read_only": true,
+    "custody_scope_matches": true,
+    "sender_disabled": true,
+    "token_test_net_only": true,
+    "admin": false,
+    "auth_attempts": 0,
+    "sends": 0
+  },
+  "persistent_gateway_activation": false,
+  "worker_attached": false,
+  "sender_enabled": false,
+  "provider_delivery_accepted": false
+}

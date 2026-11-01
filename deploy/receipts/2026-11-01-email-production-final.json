@@ -1,0 +1,74 @@
+{
+  "record": "scoped_email_production_acceptance",
+  "recorded_at_utc": "2026-11-01T02:40:50.892931+00:00",
+  "scope": "email notification delivery only; Telegram remains unavailable",
+  "running_source_sha": "4fbe03977337925f6185b393a8aa39437095b097",
+  "migration": 6,
+  "production_runtime": {
+    "reported_and_accepted_by_coordinator": true,
+    "independent_review_accepted": true,
+    "deployment_uuid": "2m1j26wruzlryqvry8heju3j",
+    "finished_utc": "2026-11-01T02:34:37Z",
+    "hook_source": "5c6e750676640047ed4498b9ab2a741d71318084",
+    "mode": "production",
+    "owned_recipient_allowlist_removed_by_reviewed_case": true,
+    "worker_private_and_notification_only": true,
+    "api_and_postgres_off_notification_network": true,
+    "fixed_gateway_dns_verified": true,
+    "public_health_observed_utc": "2026-11-01T02:37:59Z",
+    "public_health_source_matches": true,
+    "delivery_enabled": true,
+    "email_ready": true,
+    "worker_last_seen_utc": "2026-11-01T02:37:51Z",
+    "worker_source_matches": true,
+    "pending": 0,
+    "failed": 0
+  },
+  "owned_delivery": {
+    "receipt_commit": "987d77558486952b12455db8474e6d04ac8b3351",
+    "receipt_file": "deploy/receipts/2026-11-01-owned-notification-delivery-c8f69f7.json",
+    "executions": 1,
+    "distinct_owned_messages": 3,
+    "independent_actual_acceptance": true,
+    "real_recipient_operator_test_sends": 0,
+    "direct_sql_writes": 0,
+    "chain_transactions": 0,
+    "receipt_url": "https://git.cl8y.com/code/cl8y-wallet-security/src/commit/987d77558486952b12455db8474e6d04ac8b3351/deploy/receipts/2026-11-01-owned-notification-delivery-c8f69f7.json"
+  },
+  "fresh_schema6_offhost": {
+    "receipt_commit": "a4b318a2287e6284c5ba34324429bd4c0b7c6665",
+    "receipt_file": "deploy/receipts/2026-11-01-posttrial-schema6-4fbe039.json",
+    "dump_utc": "20261101T021727Z",
+    "smtp_attempted_with_first_attempt": 3,
+    "smtp_sent_with_first_attempt": 3,
+    "total_outbox_rows": 3,
+    "original_timer_and_attempt_uncertainty_metadata_preserved": true,
+    "owned_profile_present": true,
+    "active_source_sessions": 0,
+    "coordinator_actual_acceptance": true,
+    "receipt_url": "https://git.cl8y.com/code/cl8y-wallet-security/src/commit/a4b318a2287e6284c5ba34324429bd4c0b7c6665/deploy/receipts/2026-11-01-posttrial-schema6-4fbe039.json"
+  },
+  "post_acceptance_cleanup": {
+    "receipt_commit": "dece8d03261e50801daadd3008cfa171407b73cc",
+    "receiver_disabled": true,
+    "owned_receiver_token_revoked": true,
+    "current_receiver_custody_credential_removed": true,
+    "outbox_profile_checkpoint_mailbox_data_preserved": true,
+    "additional_smtp_imap_auth_or_sends": 0
+  },
+  "normal_sender_after_cleanup": {
+    "receipt_commit": "1febd777213a865661b7aa7dba94d0555d967c9d",
+    "read_only_verified_enabled": true,
+    "verified_gateway_ip_only": true,
+    "admin": false,
+    "imap": false,
+    "spoofing": false
+  },
+  "telegram": {
+    "production_accepted": false,
+    "missing_capability": "independent portal bot credential or authorized BotFather/managed-bot creation identity",
+    "unrelated_bot_calls": 0
+  },
+  "full_issue3_acceptance": false,
+  "notification_agent_changed_main_deployment": false
+}

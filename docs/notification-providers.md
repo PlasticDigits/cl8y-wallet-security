@@ -1,10 +1,38 @@
 # Notification provider continuation — issue 3
 
 Owner: BB thread `thr_ywz2dcyd3p`, lead `thr_wur9hgwhec`, coordinator
-`thr_4rw76j9ker`. This source is a separate proposed increment from live source
-`e44569e45b15dbee4b0347dff742f92bd85bedb2`; provider activation is not implied.
-Keep issue 3 open until independently reviewed runtime and owned delivery evidence
-exist. No live deployment, DB credentials or runtime hostname hook are changed.
+`thr_4rw76j9ker`. The initial provider increment was separate from then-live source
+`e44569e45b15dbee4b0347dff742f92bd85bedb2`; later actual activation is recorded
+below. The coordinator owns the main release, DB credentials and runtime hostname
+hook. Issue 3 stays open for acceptance still explicitly listed as pending.
+
+Continuation, 2026-11-01: the coordinator released source
+`4fbe03977337925f6185b393a8aa39437095b097` with migration 6 and independently
+verified worker isolation. One reviewed owned API/IMAP trial then actually
+received three distinct notices: double opt-in confirmation, an assignment timer
+with its exact deadline, and the old verified channel's removal warning. Code
+replay was rejected and the old channel remained effective through its delay.
+The exact receipt is
+`deploy/receipts/2026-11-01-owned-notification-delivery-c8f69f7.json`.
+Both owned accounts were enabled for that trial. The coordinator then separately
+accepted a fresh schema6 off-host restore preserving the three actual SMTP
+sent/first-attempt rows and full timer/outbox/contact metadata. The owned profile
+was present with zero active source sessions, confirming no further login/logout
+was needed. After that acceptance, the reviewed receiver-retirement helper
+disabled only the smoke receiver, revoked its exact token and removed its
+credential from current custody through CAS/readback. The normal sender remained
+enabled with the verified gateway restriction in a subsequent read-only check.
+Actual cleanup and sender receipts are
+`deploy/receipts/2026-11-01-smoke-retirement-e4b9a43.json` and
+`deploy/receipts/2026-11-01-sender-after-smoke-retirement.json`.
+No portal, outbox, profile, mailbox contents or private recovery checkpoint was
+deleted. The coordinator's reviewed production-mode job then removed the owned
+allowlist without another provider test/send. Actual public health and worker
+source remained `4fbe039`, migration 6, with email/delivery ready and pending0 /
+failed0. The final scoped email record is
+`deploy/receipts/2026-11-01-email-production-final.json`; its off-host proof links
+the backup owner's immutable schema6 artifact. Telegram acceptance is still
+pending and is not inferred from owned email success.
 
 ## Authorized inventory, 2026-10-31
 
@@ -65,10 +93,12 @@ CA/hostname verification happen end-to-end in the worker before AUTH or data.
 The worker's whole send is bounded at 15 seconds. SMTP protocol errors,
 destinations, credentials and payloads never become logs.
 
-The deployment owner owns the separate gateway/opt-in overlay integration.
-Credential-free candidate source and overlay are in the private program handoff
-`/tmp/cw20-security-program/mailu-gateway-candidate`; neither is included or
-enabled by this provider source PR.
+The deployment coordinator owns the main worker/opt-in overlay integration.
+The separate credential-free gateway is maintained in `deploy/mail-gateway/`;
+its source44 retained container was activated through reviewed ops source60a9544
+on 2026-11-01. Its exact runtime, cleanup and receiver-side source-IP evidence
+are recorded in `deploy/receipts/2026-11-01-gateway-activation-60a9544.json`.
+Gateway activation does not attach the portal worker or enable a provider.
 The worker remains on private networks, and the relay has its own outbound
 network with no unrelated apps. API receives only `EMAIL_PROVIDER` and the
 nonsecret `MAILU_EMAIL_ENABLED` readiness flag. Only worker receives
@@ -82,17 +112,41 @@ independent review of the exact source/image, generated network boundaries and
 the deployment owner's existing runtime PostgreSQL hostname hook. Never replace
 that hook or put worker onto the shared proxy network.
 
-Before enablement the deployment owner must prove the actual source IP observed
-at Mailu using non-authenticated TCP/STARTTLS traffic. Public ingress DNS is not
-that proof, especially if VPN routing changes the source. After review, replace
-only this owned token's TEST-NET AuthorizedIP with the verified exact source,
-enable only this mailbox, inject only the scoped token into worker runtime with delivery disabled, and
+The actual source IP observed at Mailu was independently proven using
+non-authenticated STARTTLS traffic: the exact owned-window submission-login
+record identifies `168.119.120.255` as `rip`, with local port 587, TLS and no
+authentication attempts. Only this owned token's TEST-NET restriction was
+replaced with `168.119.120.255/32`; the sender stayed disabled at that stage. Its custody
+state became `ip-restricted-disabled`, with the same token preserved and CAS
+readback verified in `deploy/receipts/2026-11-01-mailu-ip-restriction-3f4700b.json`.
+The old TEST-NET inspection helper intentionally rejects later states;
+`restrict-mailu-ip.py` verifies only the IP-restricted disabled stage. The reviewed
+`enable-owned-smoke.py` subsequently enabled only the two owned accounts and
+advanced their custody to `enabled-owned-smoke`, preserving their credentials
+and IP restrictions. The sender token was injected only into worker runtime,
+initially with delivery disabled. The coordinator must
 verify permitted fixed SMTP and denied unrelated egress from the actual worker
-network. Keep `MAILU_EMAIL_ENABLED=false` until an explicit owned/sandbox
-delivery check and fresh independent review pass. Use
-`NOTIFICATION_SANDBOX_DESTINATIONS` for those checks, configured only on worker;
-never send to real recipients as an operator test. The live deployment is not
-modified by preparing this source or mailbox.
+network. Keep both delivery/readiness switches false outside a separately gated
+owned trial. The API flag must temporarily be true to exercise its actual opt-in
+route; during that bounded window the worker must enforce the exact
+`wallet-security-smoke@cl8y.com` sandbox allowlist. The coordinator decides final
+explicit opt-in enablement or restores false flags after independent actual
+delivery review. No direct SQL/outbox synthesis or real-recipient operator test
+is used. Preparing this source and disabled accounts does not release the main
+portal application.
+
+The separate fixed smoke receiver was initially created disabled, non-admin and limited
+to 10 MiB, with no forwarding/spoofing/POP and with IMAP enabled as its intended
+use. Its discarded password and separate token custody never enter the portal.
+The token was restricted to the workstation interface `/32` provisionally;
+the actual bounded hostname-verified IMAP login subsequently accepted that
+restriction. This is distinct from a receiver-log NAT observation. Mailu
+account tokens are not protocol-specific.
+The actual preparation receipt is
+`deploy/receipts/2026-11-01-smoke-mailbox-0965c07.json`. The proposed bounded
+API/IMAP trial keeps only its unfunded generated wallet keys and initial mailbox
+UID boundary in exact privateKV `mailu_smoke_trial`, so interrupted acceptance
+can recover the same owned profile without another verification request.
 
 Migration 6 persists the first attempted transport and attempt timestamp, including
 classification of attempted legacy rows as their original Resend/Telegram mode

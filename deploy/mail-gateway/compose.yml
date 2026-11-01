@@ -16,8 +16,8 @@ services:
     pids_limit: 16
     logging: {driver: none}
     labels:
-      traefik.enable: 'false'
-      com.cl8y.scope: wallet-security-mail-gateway
+      - traefik.enable=false
+      - com.cl8y.scope=wallet-security-mail-gateway
     healthcheck: {disable: true}
     networks:
       notification: {aliases: [mail.cl8y.com]}
