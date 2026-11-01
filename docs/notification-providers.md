@@ -81,23 +81,19 @@ consumers are send-only; an empty webhook does not prove absence of another
 poller. If a consumer exists, use its dispatcher rather than enable another
 poller. PostgreSQL advisory locking protects only instances of this portal.
 
-`deploy/telegram-gateway/` prepares a separate credential-free opaque TCP relay
-to literal `149.154.166.110:443`, observed through public DNS and independently
-verified with the `api.telegram.org` TLS hostname on this workstation. It has
-four concurrent sessions, a five-second connect bound and a 25-second absolute
-session deadline. It uses a new internal `wallet-security-telegram` network,
-with alias `api.telegram.org`, and a separate outbound network. A reviewed
-runtime overlay may attach only the worker to the internal network. API,
-PostgreSQL, the existing SMTP network and gateway are unchanged. Worker HTTPS
-retains end-to-end public-CA/hostname verification, disables inherited proxies
-and follows no redirects. Gateway IP changes require a reviewed source change.
+The application requires a restricted HTTPS route for `api.telegram.org` while
+retaining end-to-end public-CA and hostname verification. Generic relay source,
+credential custody, infrastructure deployment and operator evidence belong to
+the private [cl8y-security repository](https://git.cl8y.com/PlasticDigits/cl8y-security),
+under `deploy/notification-egress/telegram/`. They are separate from this portal's
+application adapter and must be reviewed before activation.
 
-This is source preparation only. The scoped inventory receipt is
-`deploy/receipts/2026-11-01-shared-ops-telegram-preparation.json`.
-No validated plaintext ops token, owned Telegram recipient session or exclusive
-consumer-ownership proof has yet been established. API readiness, worker
-switches, credential injection, gateway deployment and owned delivery acceptance
-remain unperformed. No getUpdates, webhook change or message send occurred.
+This is application source preparation only. The owner has the ops bot token;
+its hidden CLI enrollment and identity/webhook inspection are being prepared in
+the private infrastructure repository. No credential is requested in chat.
+API readiness, worker switches, runtime credential injection, actual egress
+verification and owned delivery acceptance remain unperformed. No getUpdates,
+webhook change or message send occurred.
 The deployment coordinator owns any exact main API/worker release and must
 preserve the healthy SMTP configuration and schema 6. No backup or chain
 activation is included.
