@@ -24,6 +24,12 @@ class OwnedMessage(unittest.TestCase):
                         {'url': 'https://example.invalid/#notifications'}):
             self.assertIsNone(m.owned_message(self.message(**options)))
 
+    def test_smtp_crlf_is_normalized_before_code_and_timer_matching(self):
+        raw = self.message().replace(b'\r\n', b'\n').replace(b'\n', b'\r\n')
+        identifier, text = m.owned_message(raw)
+        self.assertNotIn('\r', text)
+        self.assertEqual(m.re.findall(r'(?m)^[0-9a-f]{64}$', text), ['a' * 64])
+
     def test_oversized_or_invalid_id_is_not_accepted(self):
         with self.assertRaisesRegex(RuntimeError, 'mail_bound'):
             m.owned_message(b'x' * 8193)

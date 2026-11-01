@@ -101,7 +101,7 @@ def owned_message(raw):
     part = message.get_body(preferencelist=('plain',)) if message.is_multipart() else message
     if part is None or part.get_content_type() != 'text/plain':
         return None
-    text = part.get_content()
+    text = part.get_content().replace('\r\n', '\n').replace('\r', '\n')
     allowed = {ORIGIN + '/#notifications', ORIGIN + '/#timers'}
     if any(url.rstrip(':') not in allowed for url in re.findall(r'https?://[^\s]+', text)):
         return None
@@ -162,6 +162,43 @@ def mailbox_credential():
     return data['imap_token']
 
 
+def trial_keys(source, current_uids):
+    """Keep only unfunded trial keys and the initial UID boundary in privateKV.
+
+    This permits recovery of the same owned profile after a bounded failure,
+    without creating another verification request inside its destination limit.
+    """
+    path = 'secret/data/groups/cl8y-wallet-security/mailu_smoke_trial'
+    result = subprocess.run(['bao-admin', 'read', '-format=json', path], capture_output=True, timeout=25)
+    if result.returncode:
+        if b'No value found at' not in result.stderr:
+            raise RuntimeError('owned_trial_custody_unavailable')
+        data = {'state': 'owned-unfunded-smoke', 'source_sha': source,
+                'owner_key': format(ec.generate_private_key(ec.SECP256K1()).private_numbers().private_value, '064x'),
+                'candidate_key': format(ec.generate_private_key(ec.SECP256K1()).private_numbers().private_value, '064x'),
+                'initial_uids': sorted(uid.decode('ascii') for uid in current_uids)}
+        stored = subprocess.run(['bao-admin', 'write', '-format=json', path, '-'],
+            input=json.dumps({'options': {'cas': 0}, 'data': data}).encode(),
+            capture_output=True, timeout=25)
+        if stored.returncode:
+            raise RuntimeError('owned_trial_custody_cas_failed')
+        result = subprocess.run(['bao-admin', 'read', '-format=json', path], capture_output=True, timeout=25)
+        if result.returncode or json.loads(result.stdout)['data']['data'] != data:
+            raise RuntimeError('owned_trial_custody_readback_failed')
+    else:
+        data = json.loads(result.stdout)['data']['data']
+    if (not isinstance(data, dict) or set(data) != {'state', 'source_sha', 'owner_key', 'candidate_key', 'initial_uids'} or
+        data['state'] != 'owned-unfunded-smoke' or data['source_sha'] != source or
+        any(not isinstance(data[key], str) or not re.fullmatch(r'[0-9a-f]{64}', data[key])
+            for key in ('owner_key', 'candidate_key')) or
+        not isinstance(data['initial_uids'], list) or len(data['initial_uids']) > 100 or
+        any(not isinstance(uid, str) or not re.fullmatch(r'[0-9]{1,20}', uid) for uid in data['initial_uids'])):
+        raise RuntimeError('owned_trial_custody_scope_conflict')
+    return (ec.derive_private_key(int(data['owner_key'], 16), ec.SECP256K1()),
+            ec.derive_private_key(int(data['candidate_key'], 16), ec.SECP256K1()),
+            {uid.encode('ascii') for uid in data['initial_uids']})
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--sha', required=True)
@@ -185,29 +222,46 @@ def main():
         del token
         if connection.select('INBOX', readonly=True)[0] != 'OK':
             raise RuntimeError('owned_mailbox_select_failed')
-        seen = imap_uids(connection)
-        owner = ec.generate_private_key(ec.SECP256K1())
+        owner, candidate, seen = trial_keys(args.sha, imap_uids(connection))
         _, wallet = portal.prove(owner, 'login')
-        if not portal.request('/api/v1/me')['authenticated']:
+        me = portal.request('/api/v1/me')
+        if not me['authenticated']:
             raise RuntimeError('owned_login_failed')
-        queued = portal.request('/api/v1/contacts/email', {'address': RECIPIENT})
-        contact_id = str(uuid.UUID(queued['id']))
-        if queued.get('queued') is not True or queued.get('sent') is not False:
-            raise RuntimeError('verification_queue_receipt_failed')
+        contacts = me['contacts']
+        if not contacts:
+            queued = portal.request('/api/v1/contacts/email', {'address': RECIPIENT})
+            contact_id = str(uuid.UUID(queued['id']))
+            if queued.get('queued') is not True or queued.get('sent') is not False:
+                raise RuntimeError('verification_queue_receipt_failed')
+            verified = False
+        else:
+            # Only this private generated key ever mutates the dedicated profile.
+            # Never create a second contact to recover from a bounded timeout.
+            if len(contacts) != 1 or contacts[0].get('kind') != 'email':
+                raise RuntimeError('owned_profile_contact_scope_conflict')
+            contact_id = str(uuid.UUID(contacts[0]['id']))
+            verified = contacts[0]['status'] == 'verified'
         verification_id, code, _ = wait_notice(connection, seen, 'verification')
         print('owned_delivery_smoke_stage verification_received=true', flush=True)
-        confirmed = portal.request('/api/v1/contacts/email/verify', {'token': code})
-        if confirmed.get('verified') is not True or confirmed.get('status') != 'verified':
-            raise RuntimeError('owned_double_optin_failed')
+        if not verified:
+            confirmed = portal.request('/api/v1/contacts/email/verify', {'token': code})
+            if confirmed.get('verified') is not True or confirmed.get('status') != 'verified':
+                raise RuntimeError('owned_double_optin_failed')
         portal.request('/api/v1/contacts/email/verify', {'token': code}, expected=400)
         del code
-        candidate = ec.generate_private_key(ec.SECP256K1())
         _, candidate_wallet = portal.prove(candidate, 'add_wallet')
-        proposal = portal.request('/api/v1/assignments', {'candidate_wallet': candidate_wallet, 'role': 'notification'})
+        assignments = portal.request('/api/v1/me')['assignments']
+        if not assignments:
+            proposal = portal.request('/api/v1/assignments', {'candidate_wallet': candidate_wallet, 'role': 'notification'})
+        else:
+            if len(assignments) != 1 or assignments[0]['candidate_wallet'] != candidate_wallet or assignments[0]['role'] != 'notification':
+                raise RuntimeError('owned_profile_assignment_scope_conflict')
+            proposal = assignments[0]
         proposal_id = str(uuid.UUID(proposal['id']))
         if proposal['delay_seconds'] < 86400:
             raise RuntimeError('owned_timer_delay_failed')
-        portal.prove(candidate, 'assignment:' + proposal_id)
+        if not proposal.get('accepted_at') and proposal.get('status') != 'cancelled':
+            portal.prove(candidate, 'assignment:' + proposal_id)
         timer_id, _, timer = wait_notice(connection, seen, 'assignment_start', wallet)
         print('owned_delivery_smoke_stage timer_received=true', flush=True)
         notice_deadline = re.search(r'(?m)^Deadline: (.+)$', timer)
@@ -215,14 +269,15 @@ def main():
             raise RuntimeError('owned_timer_deadline_mismatch')
         portal.request('/api/v1/assignments/' + proposal_id + '/cancel', {})
         before_removal = portal.request('/api/v1/me')
+        was_removal_pending = any(item.get('removal_at') for item in before_removal['contacts'])
         removal = portal.request('/api/v1/contacts/' + contact_id + '/remove', {})
         removal_id, _, _ = wait_notice(connection, seen, 'contact_removal_start', wallet)
         me = portal.request('/api/v1/me')
         contact = next(item for item in me['contacts'] if item['id'] == contact_id)
         if (contact.get('status') != 'verified' or not contact.get('removal_at') or
             contact['removal_at'] != removal.get('removal_at') or
-            dt.datetime.fromisoformat(contact['removal_at'].replace('Z', '+00:00')) <
-            dt.datetime.fromisoformat(before_removal['server_time'].replace('Z', '+00:00')) + dt.timedelta(days=1)):
+            (not was_removal_pending and dt.datetime.fromisoformat(contact['removal_at'].replace('Z', '+00:00')) <
+             dt.datetime.fromisoformat(before_removal['server_time'].replace('Z', '+00:00')) + dt.timedelta(days=1))):
             raise RuntimeError('old_verified_channel_not_retained')
         identifiers = [verification_id, timer_id, removal_id]
         if len(set(identifiers)) != 3:
