@@ -10,8 +10,14 @@ from backup_control import Failure, identifier
 
 def verify_records(output,config):
     lines=output.splitlines()
-    image=re.findall(r'^WG_OBS_IMAGE reference=(sha256:[0-9a-f]{64}) source=([0-9a-f]{40})$',output,re.M)
-    if not image or any(ref!=config['export_image'].split('@')[1] or sha!=config['export_source_sha'] for ref,sha in image):
+    manifest=config['export_image'].split('@')[1]
+    image_config=config.get('export_image_config_digest','')
+    if not re.fullmatch(r'sha256:[0-9a-f]{64}',image_config):
+        raise Failure('reviewed_export_image_config_digest_absent')
+    image=re.findall(r'^WG_OBS_IMAGE reference=(sha256:[0-9a-f]{64}) actual=(sha256:[0-9a-f]{64}) inspected_id=(sha256:[0-9a-f]{64}) source=([0-9a-f]{40})$',output,re.M)
+    if (not image or any(ref!=manifest or actual not in {manifest,image_config}
+            or inspected!=image_config or sha!=config['export_source_sha']
+            for ref,actual,inspected,sha in image)):
         raise Failure('actual_export_image_or_source_differs')
     expected='WG_OBS_HOST user=999:999 running=true network=host memory=67108864 cpu=100000000 pids=16 readonly=true ports=0'
     host=[line for line in lines if line.startswith('WG_OBS_HOST ')]
@@ -38,7 +44,10 @@ def verify_records(output,config):
                 or any(part in name.upper() for part in ['TOKEN','PASSWORD','PRIVATE','KEY','DATABASE','AWS','BAO'])):
                 raise Failure('actual_export_forbidden_environment_name')
     if 'WG_OBS_COMPLETE read_only=true' not in lines:raise Failure('actual_export_observation_incomplete')
-    return {'actual_image_source_bound':True,'private_listener_only_verified':True,'actual_ro_owned_cipher_mount':True,
+    return {'actual_image_source_bound':True,'configured_manifest_digest':manifest,
+            'reviewed_image_config_digest':image_config,'observed_container_image_field':image[-1][1],
+            'observed_pinned_image_id':image[-1][2],
+            'private_listener_only_verified':True,'actual_ro_owned_cipher_mount':True,
             'actual_uid_limits_caps_nnp_verified':True,'forbidden_credentials_absent':True}
 
 

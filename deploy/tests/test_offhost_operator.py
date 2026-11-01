@@ -174,15 +174,19 @@ class FinalControllerNegatives(unittest.TestCase):
         validate_lifecycle({'Rules':[{**base,'Filter':{'Prefix':''}}]})
     def test_actual_runtime_observer_rejects_public_or_extra_scope(self):
         from export_observation import verify_records
-        cfg={'export_image':'fixture@sha256:'+'d'*64,'export_source_sha':'a'*40,'resolved_sealed_volume':'owned'}
-        records='\n'.join(['WG_OBS_IMAGE reference=sha256:'+'d'*64+' source='+'a'*40,
+        cfg={'export_image':'fixture@sha256:'+'d'*64,'export_image_config_digest':'sha256:'+'c'*64,'export_source_sha':'a'*40,'resolved_sealed_volume':'owned'}
+        records='\n'.join(['WG_OBS_IMAGE reference=sha256:'+'d'*64+' actual=sha256:'+'c'*64+' inspected_id=sha256:'+'c'*64+' source='+'a'*40,
             'WG_OBS_HOST user=999:999 running=true network=host memory=67108864 cpu=100000000 pids=16 readonly=true ports=0',
             'WG_OBS_MOUNT volume owned /export false','WG_OBS_CAPDROP ALL','WG_OBS_SECURITY no-new-privileges:true',
             'WG_OBS_ENV_NAMES_BEGIN','PATH','EXPORT_TOKEN','EXPECTED_CIPHER_SHA256','EXPORT_FILENAME','EXPORT_EXPIRES_UNIX','WG_OBS_ENV_NAMES_END',
             'WG_OBS_LISTEN 0100080A:470C','WG_OBS_COMPLETE read_only=true'])
         self.assertTrue(verify_records(records,cfg)['private_listener_only_verified'])
-        for mutated in [records.replace('0100080A:470C','00000000:470C'),records+'\nWG_OBS_MOUNT volume foreign /root true',records.replace('PATH\n','PATH\nCOOLIFY_TOKEN\n')]:
+        alternate=records.replace('actual=sha256:'+'c'*64,'actual=sha256:'+'d'*64)
+        self.assertEqual(verify_records(alternate,cfg)['observed_container_image_field'],'sha256:'+'d'*64)
+        for mutated in [records.replace('actual=sha256:'+'c'*64,'actual=sha256:'+'e'*64),records.replace('inspected_id=sha256:'+'c'*64,'inspected_id=sha256:'+'e'*64),records.replace('0100080A:470C','00000000:470C'),records+'\nWG_OBS_MOUNT volume foreign /root true',records.replace('PATH\n','PATH\nCOOLIFY_TOKEN\n')]:
             with self.assertRaises(Failure):verify_records(mutated,cfg)
+        del cfg['export_image_config_digest']
+        with self.assertRaises(Failure):verify_records(records,cfg)
 
 class TaskAndFenceOutcomes(unittest.TestCase):
     def test_execute_response_error_is_reconciled_before_task_deletion(self):
@@ -213,7 +217,7 @@ class TaskAndFenceOutcomes(unittest.TestCase):
     def test_cleanup_failure_keeps_producer_fenced_and_claim_unreleased(self):
         cfg={'resolved_sealed_volume':'owned','sealer_uuid':'s'*24,'daemon_binding_verified':True,
             'inspector_app_uuid':'i'*24,'inspector_source_sha':'a'*40,'inspector_name':'owned-inspector',
-            'export_image':'fixture','export_source_sha':'a'*40}
+            'export_image':'fixture','export_image_config_digest':'sha256:'+'c'*64,'export_source_sha':'a'*40}
         stamp=dt.datetime.now(dt.timezone.utc).strftime('%Y%m%dT%H%M%SZ')
         ready='sealed_backup_ready dump=wallet-security-'+stamp+'.dump cipher_sha256='+'d'*64
         with tempfile.TemporaryDirectory() as directory:

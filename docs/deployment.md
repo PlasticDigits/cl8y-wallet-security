@@ -153,6 +153,38 @@ and no shared-bucket lifecycle changes. UTC rounding and provider asynchronous
 execution mean expiry eligibility is not a promise of exact physical deletion.
 Only the latest inner dump avoids nested retention amplification.
 
+After an operator-host restart, recover missing local configuration through
+read-only reconciliation before running any provision or capture command.
+Resolve the single exact portal by name and pinned live source; read its
+project/environment/destination/server relationships and the single owned
+sealer. Reconstruct the expected sealer declaration from the committed
+`compose.backup-sealer.yml`, reviewed producer image and fresh custody public
+recipient, then compare the complete actual declaration and resource context.
+Do not run `provision-backup-sealer.py` as a discovery command: it requests start.
+The historical runtime receipt alone does not authorize setting
+`daemon_binding_verified`; reobserve the exact current daemon mount names,
+read/write flags and image before restoring that field.
+
+Read `wallet-security/offhost-lease` from the existing identity-scoped private
+KV before claiming the volume. Retain every unresolved task/export intent,
+including its resource identity, even when its lease has expired. An absent
+local file, elapsed TTL or copied configuration cannot clear the remote
+journal. Reconcile each exact task's execution and each exact export resource,
+daemon and private listener; do not resume the producer or release a claim
+while any queued/late execution or cleanup remains unknown. Search owned
+service names for a create with a lost response before creating another helper.
+Recover an existing bucket only with the independently retained creation and
+owner evidence; an empty, accessible or similarly named bucket is insufficient.
+
+The reviewed ciphertext exporter artifact is manifest
+`sha256:7d90ccdec7b196b15401c2f5063795ed86a337d591a35e2521239db84698b6c0`,
+config `sha256:69d2e358c750593464b9590cfe48d37b3b04617fadd41e49501b57ae8d32878b`,
+source `f5e40b588ccb00ba3d4712bfccd1200b42bd8a45`. Recovered configuration must
+retain both `export_image` and `export_image_config_digest`. The observer
+checks the configured manifest, pinned-reference image ID and source separately;
+container `.Image` may match only that reviewed manifest or config. A local
+image fixture remains distinct from actual private binding and export proof.
+
 The intended conditional export schedule runs through the operator's existing
 broker on the BB server/workstation, rather than placing broad credentials in a
 workload. Its source/runtime/automation activation is separately gated. This

@@ -365,7 +365,7 @@ def main():
         def persist(): write_private(path, config)
         api = Api(); validate_sealer(api, config)
         if not config.get('daemon_binding_verified'): raise Failure('actual_cipher_volume_binding_unverified')
-        for key in ['inspector_app_uuid', 'inspector_source_sha', 'inspector_name', 'export_image', 'export_source_sha']:
+        for key in ['inspector_app_uuid', 'inspector_source_sha', 'inspector_name', 'export_image', 'export_image_config_digest', 'export_source_sha']:
             if not config.get(key): raise Failure('reviewed_private_transport_plan_incomplete')
         health = json.load(urllib.request.urlopen('https://security.cl8y.com/healthz', timeout=10))
         if health.get('source_sha') != args.expected_source or health.get('migration') != args.expected_migration:

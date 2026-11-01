@@ -8,9 +8,13 @@ container="export-$resource"
 configured_image=$(docker inspect -f '{{.Config.Image}}' "$container")
 [[ "$configured_image" =~ ^git\.cl8y\.com/code/cl8y-wallet-security-cipher-export@sha256:[0-9a-f]{64}$ ]]
 image=$(docker inspect -f '{{.Image}}' "$container")
+inspected_id=$(docker image inspect -f '{{.Id}}' "$configured_image")
 source=$(docker image inspect -f '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$configured_image")
-[[ "$image" =~ ^sha256:[0-9a-f]{64}$ && "$source" =~ ^[0-9a-f]{40}$ ]]
-printf 'WG_OBS_IMAGE reference=%s source=%s\n' "$image" "$source"
+[[ "$image" =~ ^sha256:[0-9a-f]{64}$ && "$inspected_id" =~ ^sha256:[0-9a-f]{64}$ && "$source" =~ ^[0-9a-f]{40}$ ]]
+# A registry manifest and its image config are separate reviewed identities.
+# Some daemon APIs report the manifest in container .Image; emit both without
+# relabeling the observed field as a config digest.
+printf 'WG_OBS_IMAGE reference=%s actual=%s inspected_id=%s source=%s\n' "${configured_image##*@}" "$image" "$inspected_id" "$source"
 docker inspect -f 'WG_OBS_HOST user={{.Config.User}} running={{.State.Running}} network={{.HostConfig.NetworkMode}} memory={{.HostConfig.Memory}} cpu={{.HostConfig.NanoCpus}} pids={{.HostConfig.PidsLimit}} readonly={{.HostConfig.ReadonlyRootfs}} ports={{len .HostConfig.PortBindings}}' "$container"
 docker inspect -f '{{range .Mounts}}{{println "WG_OBS_MOUNT" .Type .Name .Destination .RW}}{{end}}' "$container"
 docker inspect -f '{{range .HostConfig.CapDrop}}{{println "WG_OBS_CAPDROP" .}}{{end}}{{range .HostConfig.SecurityOpt}}{{println "WG_OBS_SECURITY" .}}{{end}}' "$container"
