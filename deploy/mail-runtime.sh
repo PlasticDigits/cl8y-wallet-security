@@ -28,20 +28,20 @@ transition=false
 readc() { timeout 5 docker inspect --format "$1" "$2"; }
 service_cid() {
   local found
-  found=$(timeout 5 docker ps -a -q --no-trunc --filter "label=com.docker.compose.project=$APP" --filter "label=com.docker.compose.service=$1")
-  [[ "$found" =~ ^[a-f0-9]{64}$ ]]
+  found=$(timeout 5 docker ps -a -q --no-trunc --filter "label=com.docker.compose.project=$APP" --filter "label=com.docker.compose.service=$1") || return 1
+  [[ "$found" =~ ^[a-f0-9]{64}$ ]] || return 1
   printf '%s' "$found"
 }
 optional_service_cid() {
   local found
-  found=$(timeout 5 docker ps -a -q --no-trunc --filter "label=com.docker.compose.project=$APP" --filter "label=com.docker.compose.service=$1")
-  test -z "$found" || [[ "$found" =~ ^[a-f0-9]{64}$ ]]
+  found=$(timeout 5 docker ps -a -q --no-trunc --filter "label=com.docker.compose.project=$APP" --filter "label=com.docker.compose.service=$1") || return 1
+  test -z "$found" || [[ "$found" =~ ^[a-f0-9]{64}$ ]] || return 1
   printf '%s' "$found"
 }
 owned_app() {
-  test "$(readc '{{index .Config.Labels "com.docker.compose.project"}}' "$1")" = "$APP"
+  test "$(readc '{{index .Config.Labels "com.docker.compose.project"}}' "$1")" = "$APP" || return 1
   local revision
-  revision=$(readc '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$1")
+  revision=$(readc '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$1") || return 1
   test "$revision" = "$OLD" || test "$revision" = "$SOURCE"
 }
 cleanup() {
@@ -58,9 +58,11 @@ cleanup() {
 }
 trap cleanup EXIT
 image="wallet-security:$SOURCE"
+stage=artifact_identity
 test "$(timeout 5 docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$image")" = "$SOURCE"
 actual=$(timeout 5 docker image inspect --format '{{.Id}}' "$image")
 test "$actual" = "$MANIFEST" || test "$actual" = "$CONFIG"
+stage=gateway_identity
 test "$(readc '{{.State.Running}}' "$GATEWAY")" = true
 test "$(readc '{{.Name}}' "$GATEWAY")" = /wallet-security-mail-gateway
 test "$(readc '{{.Config.Image}}' "$GATEWAY")" = wallet-security-mail-gateway:44a2d3604b2051278aafcfa80fa4e19f4eb6c1d5
@@ -69,8 +71,10 @@ test "$(readc '{{index .Config.Labels "com.cl8y.scope"}}' "$GATEWAY")" = wallet-
 test "$(readc '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$GATEWAY")" = 44a2d3604b2051278aafcfa80fa4e19f4eb6c1d5
 test "$(timeout 5 docker network inspect --format '{{.Internal}}' "$NET")" = true
 test "$(readc '{{with index .NetworkSettings.Networks "wallet-security-notification"}}{{.NetworkID}}{{end}}' "$GATEWAY")" = e1f3b89f1f7b590b7fa34def87b39521927b5b28d251189734ebd019b84081b4
+stage=persistent_volume_identity
 test "$(timeout 5 docker volume inspect --format '{{index .Labels "com.docker.compose.project"}}' "${APP}_pgdata")" = "$APP"
 test "$(timeout 5 docker volume inspect --format '{{index .Labels "com.docker.compose.volume"}}' "${APP}_pgdata")" = pgdata
+stage=existing_service_inventory
 api=$(optional_service_cid api); worker=$(optional_service_cid worker)
 test -z "$api" || owned_app "$api"
 test -z "$worker" || owned_app "$worker"
@@ -84,6 +88,7 @@ fi
 # This file contains literal variable references, never expanded secret values.
 printf '{"services":{"api":{"environment":{"DATABASE_URL":"postgresql://security_api:${DB_API_PASSWORD:?}@%s-postgres-1:5432/wallet_security","EMAIL_PROVIDER":"smtp","MAILU_EMAIL_ENABLED":"%s"}},"worker":{"networks":["private","notification"],"environment":{"EMAIL_PROVIDER":"smtp","MAILU_SMTP_TOKEN":"${MAILU_SMTP_TOKEN:?}","MAILU_DELIVERY_ENABLED":"%s"%s}}},"networks":{"notification":{"external":true,"name":"wallet-security-notification"}}}\n' "$APP" "$api_ready" "$delivery_ready" "$sandbox" > "$overlay"
 compose=(docker compose --env-file .env -f compose.yml -f "$overlay" --project-directory "/data/coolify/applications/$APP" -p "$APP")
+stage=compose_validation
 timeout 15 "${compose[@]}" config --quiet
 stage=fence
 transition=true
