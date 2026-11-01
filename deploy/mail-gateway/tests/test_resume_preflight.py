@@ -52,12 +52,13 @@ elif a[0]=='stop':
  if a[-1]==g:state['running']=False;state['stops']+=1
  elif a[-1]!=p:raise SystemExit(1)
 elif a[0]=='rm':
+ if os.environ.get('OWNED_REMOVE_FAIL')=='true':raise SystemExit(1)
  assert a[-1]==p;state['probe']=False
 else:raise SystemExit(1)
 path.write_text(json.dumps(state))
 '''
 class Resume(unittest.TestCase):
- def run_case(self, **flags):
+ def run_case(self, activation=False, **flags):
   with tempfile.TemporaryDirectory() as directory:
    root=Path(directory);context=root/'context';context.mkdir();binary=root/'bin';binary.mkdir()
    for name in ('resume-preflight.sh','normalize-network-names.sh'):shutil.copyfile(ROOT/name,context/name)
@@ -65,7 +66,7 @@ class Resume(unittest.TestCase):
    (binary/'docker').write_text(FAKE);(binary/'docker').chmod(0o700)
    path=root/'state';path.write_text(json.dumps({'running':False,'probe':False,'starts':0,'stops':0,'probe_starts':0}))
    env=os.environ.copy();env.update(PATH=str(binary)+':'+env['PATH'],OWNED_RESUME_STATE=str(path));env.update({k:str(v).lower() for k,v in flags.items()})
-   r=subprocess.run(['bash',str(context/'resume-preflight.sh')],env=env,capture_output=True,text=True,timeout=5)
+   r=subprocess.run(['bash',str(context/'resume-preflight.sh')]+(['--activate-retained'] if activation else []),env=env,capture_output=True,text=True,timeout=5)
    return r.returncode,json.loads(path.read_text()),r.stdout
  def test_success_stops_same_retained_cid_and_removes_probe(self):
   code,state,out=self.run_case();self.assertEqual(code,1);self.assertEqual(state['starts'],1);self.assertEqual(state['stops'],1);self.assertFalse(state['probe']);self.assertIn('gateway_noauth_tls_preflight_pass',out)
@@ -80,3 +81,11 @@ class Resume(unittest.TestCase):
   _,state,out=self.run_case(OWNED_TLS_FAIL=True);self.assertEqual(state['stops'],1);self.assertFalse(state['probe']);self.assertNotIn('gateway_noauth_tls_preflight_pass',out)
  def test_partial_probe_creation_is_cleaned_by_same_scope_gates(self):
   _,state,out=self.run_case(OWNED_PARTIAL_PROBE=True);self.assertEqual(state['stops'],1);self.assertFalse(state['probe']);self.assertIn('gateway_noauth_probe_cleanup=true',out)
+ def test_activation_keeps_only_verified_gateway_after_owned_probe_cleanup(self):
+  code,state,out=self.run_case(activation=True)
+  self.assertEqual(code,1);self.assertTrue(state['running']);self.assertEqual(state['starts'],1);self.assertEqual(state['stops'],0);self.assertFalse(state['probe'])
+  self.assertIn('gateway_activation_pass',out);self.assertIn('gateway_noauth_probe_cleanup=true',out)
+ def test_activation_failure_or_cleanup_failure_never_commits_persistence(self):
+  for flag in ('OWNED_TLS_FAIL','OWNED_PARTIAL_PROBE','OWNED_REMOVE_FAIL'):
+   _,state,out=self.run_case(activation=True,**{flag:True})
+   self.assertFalse(state['running']);self.assertEqual(state['stops'],1);self.assertNotIn('gateway_activation_pass',out)

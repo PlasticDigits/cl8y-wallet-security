@@ -165,3 +165,13 @@ always leaves source-IP clearance false for independent review. If log retention
 no longer covers the window, the evidence is missing; no additional connection
 or gateway start is implied. Sender/token scope, AUTH, delivery and worker
 attachment remain separately gated.
+
+`--activate-retained` is a separately reviewed continuation using the same
+fixed stopped CID/source44, pre-start admission and live guards. Its only
+wrapper delta is to clean both owned probes synchronously and confirm the
+fixed gateway still runs before committing persistence. TLS or probe-cleanup
+failure still stops that gateway. The build deliberately exits 1 even after
+the persistent activation receipt, preventing normal platform release steps.
+The provisioner accepts this mode only for the fixed gateway application and
+preserves environment and normal start commands. No worker attachment, token
+restriction, sender enablement or AUTH/send occurs in this action.

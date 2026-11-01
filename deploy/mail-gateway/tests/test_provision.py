@@ -89,6 +89,18 @@ class Scope(unittest.TestCase):
   self.assertFalse(any(path.endswith('/envs') for _,path,_ in calls))
   self.assertNotIn('docker_compose_custom_start_command',calls[1][2])
   self.assertIn('"noauth_preflight_only": true',output.getvalue())
+ def test_activation_is_fixed_app_only_and_preserves_env_and_normal_start(self):
+  target='y08cgj4rjem3ldgfmxb11nsp';calls=[]
+  build='timeout 90 bash deploy/mail-gateway/resume-preflight.sh --activate-retained'
+  actual=app();actual.update(git_commit_sha=SHA,settings={'is_raw_compose_deployment_enabled':True},docker_compose_custom_build_command=build)
+  responses=[app(),{},actual,{'deployments':[{'deployment_uuid':'b'*24}]}]
+  def api(method,path,data=None):calls.append((method,path,data));return responses.pop(0)
+  remote=subprocess.CompletedProcess([],0,SHA+'\trefs/heads/'+BRANCH+'\n','')
+  with patch.object(sys,'argv',['provision','--app',target,'--sha',SHA,'--branch',BRANCH,'--activate-retained']),patch.object(m,'api',side_effect=api),patch.object(m.subprocess,'run',return_value=remote),contextlib.redirect_stdout(io.StringIO()) as output:m.main()
+  self.assertFalse(any(path.endswith('/envs') for _,path,_ in calls));self.assertNotIn('docker_compose_custom_start_command',calls[1][2]);self.assertIn('"persistent_activation_only": true',output.getvalue())
+  with patch.object(sys,'argv',['provision','--app',APP,'--sha',SHA,'--branch',BRANCH,'--activate-retained']),patch.object(m,'api') as blocked:
+   with self.assertRaisesRegex(RuntimeError,'fixed_activation_app_required'):m.main()
+   blocked.assert_not_called()
  def test_only_closed_own_deployment_receipts_escape(self):
   receipt='mail_gateway_preflight_pass uid=10001 no_default_route=true alias_private=true hostname_verified=true direct_mailu_denied=true other_targets_denied=true auth=false sends=0'
   deployment=dict(application_name=m.NAME,status='finished',logs=json.dumps([{'output':'synthetic-secret-provider-body'},{'output':receipt},{'output':receipt+' credential=synthetic-secret'}]))

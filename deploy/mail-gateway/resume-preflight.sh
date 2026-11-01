@@ -1,8 +1,10 @@
 #!/bin/bash
-# Fixed retained-CID44 resume, normalized guards, one noAUTH TLS probe, always stop.
+# Fixed retained-CID44 resume; optional independently reviewed persistent activation.
 set -eu -o pipefail
 exec 2>/dev/null
-[ "$#" = 0 ]
+persistent=false
+if [ "$#" = 1 ] && [ "$1" = --activate-retained ]; then persistent=true
+else [ "$#" = 0 ]; fi
 APP=y08cgj4rjem3ldgfmxb11nsp
 CID=643b1cc6f975dc11dbae9f3de7e8576b5922b502f3147ec6d076c7aea8902886
 NAME=wallet-security-mail-gateway
@@ -94,4 +96,19 @@ timeout 22 docker start --attach "$probe_id"
 [ "$(readc '{{.State.ExitCode}}' "$probe_id")" = 0 ]
 ref=$(readc '{{.Image}}' "$CID"); [[ "$ref" =~ ^sha256:[a-f0-9]{64}$ ]]
 printf 'gateway_noauth_tls_preflight_pass workload_source=44a2d3604b2051278aafcfa80fa4e19f4eb6c1d5 retained_cid=%s running_image_ref=%s nat_source_pending=true\n' "$CID" "$ref"
+if [ "$persistent" = true ]; then
+  # Failures still use the original stop/retain cleanup. Commit persistence only
+  # after BOTH owned probe cleanups and one last fixed-CID running readback.
+  remove_probe "$PROBE" wallet-security-mail-gateway-preflight "$probe_id"
+  probe_intent=false
+  printf '%s\n' gateway_noauth_probe_cleanup=true
+  remove_probe "$BINDING" wallet-security-mail-gateway-binding ''
+  absence=false
+  printf '%s\n' gateway_noauth_binding_cleanup=true
+  gateway_owned
+  [ "$(readc '{{.State.Running}}' "$CID")" = true ]
+  printf 'gateway_activation_pass retained_cid=%s running_image_ref=%s worker_attached=false auth=false sends=0\n' "$CID" "$ref"
+  started=false
+fi
+# Also deliberate failure in activation mode: never enter normal release steps.
 exit 1
