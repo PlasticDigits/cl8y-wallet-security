@@ -218,3 +218,10 @@ old profile/contact changes; require fresh authorized confirmation when state is
 uncertain. Do not replay uncertain outbox items automatically. Never run a pre-6
 worker against a database containing SMTP transport rows. These are recovery
 procedures, not mutations to current live authentication or state during drills.
+
+The actual post-trial schema-6 offhost recovery receipt is
+[`2026-11-01-posttrial-schema6-4fbe039.json`](../deploy/receipts/2026-11-01-posttrial-schema6-4fbe039.json).
+It verifies three sent SMTP rows with first-attempt metadata, complete saved
+assignment/contact/event and outbox metadata preservation, and zero active
+sessions for the present owned trial profile before scratch auth invalidation.
+This one-off proof does not establish unattended coverage.

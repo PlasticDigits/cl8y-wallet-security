@@ -17,10 +17,13 @@ from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from backup_control import Api, Failure, identifier, s3_client, safe_main
 
 
-def main():
+def main(owned_trial_session_counter=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--config', required=True)
+    parser.add_argument('--min-smtp-sent-with-first-attempt', type=int, default=0)
     args = parser.parse_args()
+    if args.min_smtp_sent_with_first_attempt < 0:
+        raise Failure('invalid_minimum_smtp_evidence_count')
     spec = importlib.util.spec_from_file_location('capture', Path(__file__).with_name('backup-capture.py'))
     capture = importlib.util.module_from_spec(spec); spec.loader.exec_module(capture)
     cfg = json.loads(Path(args.config).read_text()); last = cfg.get('last_backup')
@@ -91,16 +94,23 @@ def main():
             raise Failure('restored_history_not_exact_pinned_source')
         counts = dict(zip(['profiles', 'wallets', 'assignments', 'contacts'], map(int, sql(
             'SELECT (SELECT count(*) FROM profiles),(SELECT count(*) FROM wallets),(SELECT count(*) FROM assignments),(SELECT count(*) FROM contacts)').split('|'))))
-        timers_before = sql("SELECT COALESCE(jsonb_agg(jsonb_build_array(proposed_at,executable_at,delay_seconds,accepted_at,cancelled_at,removal_at) ORDER BY id),'[]'::jsonb) FROM assignments")
+        timers_query = "SELECT jsonb_build_object('assignments',(SELECT COALESCE(jsonb_agg(to_jsonb(a) ORDER BY id),'[]'::jsonb) FROM assignments a),'contacts',(SELECT COALESCE(jsonb_agg(to_jsonb(c)-'encrypted_destination' ORDER BY id),'[]'::jsonb) FROM contacts c),'events',(SELECT COALESCE(jsonb_agg(to_jsonb(e) ORDER BY id),'[]'::jsonb) FROM security_events e))"
+        timers_before = sql(timers_query)
         # Version-independent audit/lease/transport preservation: include every
         # present field except the unchanged opaque encrypted payload.
         outbox_query = "SELECT COALESCE(jsonb_agg(to_jsonb(o)-'encrypted_payload' ORDER BY id),'[]'::jsonb) FROM notification_outbox o"
         outbox_before = sql(outbox_query)
+        smtp_evidence = None
+        if max(applied) >= 6:
+            smtp_evidence = json.loads(sql("SELECT jsonb_build_object('total_outbox_rows',count(*),'smtp_sent_with_first_attempt',count(*) FILTER (WHERE delivery_transport='smtp' AND state='sent' AND first_attempt_at IS NOT NULL AND sent_at IS NOT NULL),'smtp_attempted_with_first_attempt',count(*) FILTER (WHERE delivery_transport='smtp' AND attempts>0 AND first_attempt_at IS NOT NULL)) FROM notification_outbox"))
+        if args.min_smtp_sent_with_first_attempt and (smtp_evidence is None or smtp_evidence['smtp_sent_with_first_attempt'] < args.min_smtp_sent_with_first_attempt):
+            raise Failure('restored_smtp_delivery_metadata_evidence_insufficient')
+        owned_trial_sessions = owned_trial_session_counter(sql, last['stamp']) if owned_trial_session_counter else None
         # Exercise incident-promotion auth invalidation only in this scratch DB.
         sql('BEGIN; DELETE FROM sessions; DELETE FROM challenges; DELETE FROM contact_verifications; COMMIT;')
         if sql('SELECT (SELECT count(*) FROM sessions)+(SELECT count(*) FROM challenges)+(SELECT count(*) FROM contact_verifications)') != '0':
             raise Failure('scratch_auth_replay_invalidation_failed')
-        if timers_before != sql("SELECT COALESCE(jsonb_agg(jsonb_build_array(proposed_at,executable_at,delay_seconds,accepted_at,cancelled_at,removal_at) ORDER BY id),'[]'::jsonb) FROM assignments"):
+        if timers_before != sql(timers_query):
             raise Failure('original_timer_evidence_changed')
         if outbox_before != sql(outbox_query):
             raise Failure('attempt_or_uncertainty_evidence_changed')
@@ -115,6 +125,9 @@ def main():
             raise Failure('scratch_contact_key_canary_failed')
         receipt = {'offhost_cipher_sha256': expected, 'schema_source_commit_checked': last['observed_health_source_sha'], 'migration': max(applied),
             'exact_sqlx_checksums': True, 'aggregate_restored_counts': counts,
+            'aggregate_restored_smtp_evidence': smtp_evidence,
+            'minimum_required_smtp_sent_with_first_attempt': args.min_smtp_sent_with_first_attempt,
+            'owned_trial_sessions_before_scratch_auth_invalidation': owned_trial_sessions,
             'fresh_vault_age_decryption': True, 'fresh_contact_key_api_format_canary': True,
             'scratch_all_sessions_challenges_contact_tokens_invalidated': True,
             'original_timer_and_outbox_attempt_uncertainty_evidence_preserved': True,
