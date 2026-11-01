@@ -1,0 +1,21 @@
+{
+  "record": "portal_telegram_capability_scoped_inventory",
+  "date_utc": "2026-11-01",
+  "connected_telegram_or_botfather_tools": 0,
+  "coolify_names_only": {
+    "applications_portal_bot_candidates": 0,
+    "applications_management_bot_candidates": 0,
+    "services_portal_bot_candidates": 0,
+    "services_management_bot_candidates": 0,
+    "env_endpoints_read": false
+  },
+  "owned_privatekv_metadata_group_read": true,
+  "owned_privatekv_bot_credential_name_candidates": 0,
+  "privatekv_values_read": false,
+  "unrelated_bot_calls": 0,
+  "messages_sent": 0,
+  "service_changes": false,
+  "missing_capability": "independent portal bot token or authorized BotFather/managed-bot creation identity",
+  "primary_management_contract": "https://core.telegram.org/bots/features#managed-bots",
+  "source_or_runtime_acceptance": false
+}
