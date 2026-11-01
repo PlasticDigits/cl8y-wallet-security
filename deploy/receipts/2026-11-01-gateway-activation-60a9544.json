@@ -1,0 +1,66 @@
+{
+  "record": "owned_gateway_persistent_activation_and_receiver",
+  "date_utc": "2026-11-01",
+  "ops_source": "60a9544efe169814ea98169ba6f2b3da20691946",
+  "workload_source": "44a2d3604b2051278aafcfa80fa4e19f4eb6c1d5",
+  "application_uuid": "y08cgj4rjem3ldgfmxb11nsp",
+  "deployment_uuid": "ghp3ushnsci9gcclpyfoniin",
+  "terminal_status": "intentional_failed_before_normal_release",
+  "retained_cid": "643b1cc6f975dc11dbae9f3de7e8576b5922b502f3147ec6d076c7aea8902886",
+  "running_image_ref": "sha256:e6c3498ae4e1ccc7428e28aa31ff3dbd46f49ee8430a92e6fdd2a0c5fd59e79c",
+  "prestart_identity_and_resource_bounds_pass": true,
+  "exact_network_ids_and_empty_prestart_members_pass": true,
+  "live_structural_and_worker_direct_denial_guards_pass": true,
+  "tls_window": {
+    "start_utc": "2026-11-01T01:25:05Z",
+    "end_utc": "2026-11-01T01:25:05Z",
+    "ehlo": "cl8y-gateway-20261101T012505Z-427f96e8"
+  },
+  "probe": {
+    "uid": 10001,
+    "no_default_route": true,
+    "private_alias": true,
+    "hostname_verified": true,
+    "direct_mailu_denied": true,
+    "other_targets_denied": true,
+    "auth": false,
+    "sends": 0
+  },
+  "final_state": {
+    "same_owned_cid_running": true,
+    "both_owned_probe_names_absent": true,
+    "probe_cleanup": true,
+    "binding_cleanup": true,
+    "worker_attached": false
+  },
+  "normal_config": {
+    "source44_restored_and_read_back": true,
+    "environment_and_normal_start_preserved": true,
+    "deploy": false,
+    "start": false,
+    "retained_runtime_untouched": true
+  },
+  "current_receiver": {
+    "reader_source": "b4859543a15d5ccd24146c051cda46c63b0e8a0f",
+    "reader_reuse_delta": "START=END=2026-11-01T01:25:05Z; DEPLOYMENT=ghp3ushnsci9gcclpyfoniin; otherwise unchanged",
+    "bounded_reads": 1,
+    "timestamped_rows": 2000,
+    "window_covered": true,
+    "receiver_utc": "2026-11-01T01:25:05.824302+00:00",
+    "process": "submission-login",
+    "rip_role": "owned_gateway_host",
+    "lip_role": "redacted",
+    "known_owned_gateway_host": "168.119.120.255",
+    "lport587": true,
+    "tls": true,
+    "no_auth_attempts": true,
+    "connection_closed": true,
+    "raw_logs_or_unrelated_addresses_emitted": false
+  },
+  "sender_enabled": false,
+  "token_ip_changed": false,
+  "worker_attached": false,
+  "auth_attempts": 0,
+  "sends": 0,
+  "delivery_accepted": false
+}
