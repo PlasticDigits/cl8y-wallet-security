@@ -9,6 +9,30 @@ import sys
 import time
 
 
+def preserve_history(prior, current):
+    history = {}
+    immutable = ['cipher_sha256', 'object_key', 'dump', 'stamp', 'cipher_bytes',
+                 'observed_health_source_sha', 'observed_health_migration']
+    for state in [prior, current]:
+        entries = list(state.get('backup_history', {}).items())
+        last = state.get('last_backup')
+        if last:
+            entries.append((last['cipher_sha256'], last))
+        for digest, entry in entries:
+            if not isinstance(entry, dict) or entry.get('cipher_sha256') != digest:
+                raise ValueError('history_identity_invalid')
+            merged = history.setdefault(digest, {})
+            for key in immutable:
+                if key in merged and key in entry and merged[key] != entry[key]:
+                    raise ValueError('history_immutable_binding_conflict')
+            for key, value in entry.items():
+                merged.setdefault(key, value)
+    prior_last = prior.get('last_backup')
+    if prior_last and prior_last['stamp'] > current['last_backup']['stamp']:
+        current['last_backup'] = prior_last
+    current['backup_history'] = history
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--controller-release', required=True)
@@ -46,13 +70,7 @@ def persist(args):
             raise Failure('durable_owned_identity_changed')
     if prior.get('active_export') or prior.get('unknown_task') or prior.get('global_unresolved'):
         raise Failure('durable_hold_requires_reconciliation')
-    last = cfg['last_backup']
-    history = cfg.setdefault('backup_history', {})
-    if last['cipher_sha256'] in history:
-        if history[last['cipher_sha256']]['object_key'] != last['object_key']:
-            raise Failure('prior_history_object_binding_differs')
-    else:
-        history[last['cipher_sha256']] = last
+    preserve_history(prior, cfg)
     value = {'config_json': json.dumps(cfg, sort_keys=True, separators=(',', ':'))}
     client.request('POST', 'agent-secrets/data/' + entity + '/' + name,
                    {'options': {'cas': metadata['version']}, 'data': value})
