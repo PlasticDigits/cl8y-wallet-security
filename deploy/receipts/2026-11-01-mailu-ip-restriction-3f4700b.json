@@ -1,0 +1,19 @@
+{
+  "record": "owned_mailu_ip_restricted_sender_disabled",
+  "date_utc": "2026-11-01",
+  "source": "3f4700bddd16e3c17f8ef7abe655bdced827643a",
+  "command": "bao-exec --only COOLIFY_WIRE_TOKEN,COOLIFY_URL -- python3 ops/notifications/restrict-mailu-ip.py",
+  "changed": true,
+  "verified_gateway_ip_only": true,
+  "authorized_ips": [
+    "168.119.120.255/32"
+  ],
+  "sender_disabled": true,
+  "custody_readback": true,
+  "token_rotated": false,
+  "admin": false,
+  "auth_attempts": 0,
+  "sends": 0,
+  "worker_attached": false,
+  "delivery_accepted": false
+}
