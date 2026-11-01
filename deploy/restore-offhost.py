@@ -94,7 +94,8 @@ def main(owned_trial_session_counter=None):
             raise Failure('restored_history_not_exact_pinned_source')
         counts = dict(zip(['profiles', 'wallets', 'assignments', 'contacts'], map(int, sql(
             'SELECT (SELECT count(*) FROM profiles),(SELECT count(*) FROM wallets),(SELECT count(*) FROM assignments),(SELECT count(*) FROM contacts)').split('|'))))
-        timers_before = sql("SELECT COALESCE(jsonb_agg(jsonb_build_array(proposed_at,executable_at,delay_seconds,accepted_at,cancelled_at,removal_at) ORDER BY id),'[]'::jsonb) FROM assignments")
+        timers_query = "SELECT jsonb_build_object('assignments',(SELECT COALESCE(jsonb_agg(to_jsonb(a) ORDER BY id),'[]'::jsonb) FROM assignments a),'contacts',(SELECT COALESCE(jsonb_agg(to_jsonb(c)-'encrypted_destination' ORDER BY id),'[]'::jsonb) FROM contacts c),'events',(SELECT COALESCE(jsonb_agg(to_jsonb(e) ORDER BY id),'[]'::jsonb) FROM security_events e))"
+        timers_before = sql(timers_query)
         # Version-independent audit/lease/transport preservation: include every
         # present field except the unchanged opaque encrypted payload.
         outbox_query = "SELECT COALESCE(jsonb_agg(to_jsonb(o)-'encrypted_payload' ORDER BY id),'[]'::jsonb) FROM notification_outbox o"
@@ -109,7 +110,7 @@ def main(owned_trial_session_counter=None):
         sql('BEGIN; DELETE FROM sessions; DELETE FROM challenges; DELETE FROM contact_verifications; COMMIT;')
         if sql('SELECT (SELECT count(*) FROM sessions)+(SELECT count(*) FROM challenges)+(SELECT count(*) FROM contact_verifications)') != '0':
             raise Failure('scratch_auth_replay_invalidation_failed')
-        if timers_before != sql("SELECT COALESCE(jsonb_agg(jsonb_build_array(proposed_at,executable_at,delay_seconds,accepted_at,cancelled_at,removal_at) ORDER BY id),'[]'::jsonb) FROM assignments"):
+        if timers_before != sql(timers_query):
             raise Failure('original_timer_evidence_changed')
         if outbox_before != sql(outbox_query):
             raise Failure('attempt_or_uncertainty_evidence_changed')
