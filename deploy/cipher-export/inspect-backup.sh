@@ -14,7 +14,7 @@ image=$(docker inspect -f '{{.Config.Image}}' "$container")
 [[ "$image" = "wallet-security:$source" || "$image" = "git.cl8y.com/code/cl8y-wallet-security@$manifest" ]]
 actual=$(docker inspect -f '{{.Image}}' "$container")
 [[ "$actual" = "$manifest" || "$actual" = "$config" ]]
-test "$(docker image inspect -f '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$image")" = "$source"
+test "$(docker image inspect -f '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$actual")" = "$source"
 test "$(docker exec "$container" id -u)" = 999
 mount=$(docker inspect -f '{{range .Mounts}}{{if eq .Destination "/backups"}}{{println .Type .Name .RW}}{{end}}{{end}}' "$container")
 test "$mount" = "volume ${portal}_backups true"
