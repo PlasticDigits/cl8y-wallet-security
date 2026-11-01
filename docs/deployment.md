@@ -191,14 +191,29 @@ deployed daemon both fields report the manifest, while the hash-verified raw
 registry manifest establishes its config mapping. A local
 image fixture remains distinct from actual private binding and export proof.
 
-The intended conditional export schedule runs through the operator's existing
-broker on the BB server/workstation, rather than placing broad credentials in a
-workload. Its source/runtime/automation activation is separately gated. This
-requires that operator host and VPN be online; off-host RPO is at least the daily
-cadence plus any operator-host outage. Server-side daily local dumps continue
-independently. Stale/no completed pair, cleanup or policy failures must fail
-visibly and remain owned by the deployment thread, never become a human
-monitoring chore. No one-off export establishes unattended coverage.
+The conditional daily continuation uses the operator's existing broker on the
+BB server/workstation, with only the selected Coolify credentials in operator
+memory. It installs no operator identity or S3 credential into a workload and
+creates no unmanaged credential file; routine no-print certificate login keeps
+the existing private CLI token cache. The native BB definition is enabled for
+03:20 UTC daily with a ten-minute outer limit. Its stored runner is byte-bound
+to reviewed source, checks frozen controller hashes and private routes, and
+CAS-persists only a released clean journal and owned state without erasing newer
+history. Failures route one closed, rate-limited notice to the existing agent
+owner; unknown intents remain held. Repository merge does not enable or update
+an automation definition by itself.
+
+This requires the BB server/operator host, private WG routes, existing valid
+certificate/broker/venv, and Coolify/S3 reachability. The observed wg0 service
+is active but its unit is disabled at boot. No reboot-safe coverage is claimed.
+Server-side daily dumps remain independent; the controller accepts source age
+at most 25 hours. Daily copy phase drift can yield up to 49 hours of source-point
+lag, plus any failed/paused or host/BB/VPN outage; this is not a <=24-hour RPO.
+Stale/no completed pair and cleanup/policy failures fail visibly and remain
+agent-owned. The successful native-context run is recorded in
+[`2026-11-01-native-offhost-automation-proof.json`](../deploy/receipts/2026-11-01-native-offhost-automation-proof.json).
+The separately retained inactive proposal records the original reviewed input,
+not the definition's current enabled state.
 
 Off-host restore proof downloads only the exact owned object, verifies its full
 cipher hash against the independent KV ledger, retrieves recovery material
