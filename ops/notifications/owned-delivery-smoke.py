@@ -269,13 +269,15 @@ def main():
             raise RuntimeError('owned_timer_deadline_mismatch')
         portal.request('/api/v1/assignments/' + proposal_id + '/cancel', {})
         before_removal = portal.request('/api/v1/me')
-        was_removal_pending = any(item.get('removal_at') for item in before_removal['contacts'])
+        prior_removal = next(item for item in before_removal['contacts'] if item['id'] == contact_id).get('removal_at')
+        was_removal_pending = prior_removal is not None
         removal = portal.request('/api/v1/contacts/' + contact_id + '/remove', {})
+        expected_removal = prior_removal if was_removal_pending else removal.get('removal_at')
         removal_id, _, _ = wait_notice(connection, seen, 'contact_removal_start', wallet)
         me = portal.request('/api/v1/me')
         contact = next(item for item in me['contacts'] if item['id'] == contact_id)
         if (contact.get('status') != 'verified' or not contact.get('removal_at') or
-            contact['removal_at'] != removal.get('removal_at') or
+            contact['removal_at'] != expected_removal or
             (not was_removal_pending and dt.datetime.fromisoformat(contact['removal_at'].replace('Z', '+00:00')) <
              dt.datetime.fromisoformat(before_removal['server_time'].replace('Z', '+00:00')) + dt.timedelta(days=1))):
             raise RuntimeError('old_verified_channel_not_retained')
