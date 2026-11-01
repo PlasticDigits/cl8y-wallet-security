@@ -207,7 +207,7 @@ This requires the BB server/operator host, private WG routes, existing valid
 certificate/broker/venv, and Coolify/S3 reachability. The observed wg0 service
 is active but its unit is disabled at boot. No reboot-safe coverage is claimed.
 Server-side daily dumps remain independent; the controller accepts source age
-at most25 hours. Daily copy phase drift can yield up to49 hours of source-point
+at most 25 hours. Daily copy phase drift can yield up to 49 hours of source-point
 lag, plus any failed/paused or host/BB/VPN outage; this is not a <=24-hour RPO.
 Stale/no completed pair and cleanup/policy failures fail visibly and remain
 agent-owned. The successful native-context run is recorded in
