@@ -73,7 +73,13 @@ def s3_client(storage):
         raise Failure('invalid_offhost_endpoint')
     if not storage.get('key') or not storage.get('secret'):
         raise Failure('platform_storage_credential_unavailable')
-    return boto3.client('s3', endpoint_url=storage['endpoint'], region_name=storage['region'],
+    # Coolify may retain its generic us-east-1 default. Hetzner requires the
+    # location encoded in its official endpoint for bucket creation/signing.
+    region = storage['region']
+    location = re.fullmatch(r'(fsn1|nbg1|hel1)\.your-objectstorage\.com', parsed.hostname)
+    if location:
+        region = location[1]
+    return boto3.client('s3', endpoint_url=storage['endpoint'], region_name=region,
         aws_access_key_id=storage['key'], aws_secret_access_key=storage['secret'],
         config=Config(signature_version='s3v4', connect_timeout=10, read_timeout=30,
                       retries={'total_max_attempts': 1}, proxies={},
@@ -84,7 +90,7 @@ def s3_client(storage):
 def s3_error_code(error):
     code = getattr(error, 'response', {}).get('Error', {}).get('Code')
     allowed = {'404', '403', 'NoSuchBucket', 'NoSuchKey', 'AccessDenied', 'NoSuchLifecycleConfiguration', 'NoSuchBucketPolicy',
-               'BucketAlreadyOwnedByYou', 'BucketAlreadyExists', 'SignatureDoesNotMatch', 'InvalidLocationConstraint'}
+               'BucketAlreadyOwnedByYou', 'BucketAlreadyExists', 'SignatureDoesNotMatch', 'InvalidLocationConstraint', 'LocationConstraintConflict'}
     return code if code in allowed else 'storage_request_failed'
 
 
