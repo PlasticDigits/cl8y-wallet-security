@@ -1,10 +1,25 @@
 # Notification provider continuation — issue 3
 
 Owner: BB thread `thr_ywz2dcyd3p`, lead `thr_wur9hgwhec`, coordinator
-`thr_4rw76j9ker`. This source is a separate proposed increment from live source
-`e44569e45b15dbee4b0347dff742f92bd85bedb2`; provider activation is not implied.
-Keep issue 3 open until independently reviewed runtime and owned delivery evidence
-exist. No live deployment, DB credentials or runtime hostname hook are changed.
+`thr_4rw76j9ker`. The initial provider increment was separate from then-live source
+`e44569e45b15dbee4b0347dff742f92bd85bedb2`; later actual activation is recorded
+below. The coordinator owns the main release, DB credentials and runtime hostname
+hook. Issue 3 stays open for acceptance still explicitly listed as pending.
+
+Continuation, 2026-11-01: the coordinator released source
+`4fbe03977337925f6185b393a8aa39437095b097` with migration 6 and independently
+verified worker isolation. One reviewed owned API/IMAP trial then actually
+received three distinct notices: double opt-in confirmation, an assignment timer
+with its exact deadline, and the old verified channel's removal warning. Code
+replay was rejected and the old channel remained effective through its delay.
+The exact receipt is
+`deploy/receipts/2026-11-01-owned-notification-delivery-c8f69f7.json`.
+Both owned accounts are enabled for this trial and the worker remains restricted
+to the exact owned recipient. Production allowlist removal, fresh schema6
+off-host recovery of those real outbox rows and Telegram acceptance are separate
+coordinator gates; none is inferred from the delivery receipt. The separately
+reviewed receiver-retirement helper runs only after backup acceptance and does
+not alter the normal sender, portal, outbox, profile or private recovery checkpoint.
 
 ## Authorized inventory, 2026-10-31
 
@@ -88,13 +103,15 @@ The actual source IP observed at Mailu was independently proven using
 non-authenticated STARTTLS traffic: the exact owned-window submission-login
 record identifies `168.119.120.255` as `rip`, with local port 587, TLS and no
 authentication attempts. Only this owned token's TEST-NET restriction was
-replaced with `168.119.120.255/32`; the sender remains disabled. Its custody
-state is now `ip-restricted-disabled`, with the same token preserved and CAS
+replaced with `168.119.120.255/32`; the sender stayed disabled at that stage. Its custody
+state became `ip-restricted-disabled`, with the same token preserved and CAS
 readback verified in `deploy/receipts/2026-11-01-mailu-ip-restriction-3f4700b.json`.
-The old TEST-NET inspection helper intentionally rejects this later state;
-`restrict-mailu-ip.py` has a read-only idempotent verification path for it.
-Next, separately enable the owned accounts under the coordinator's gate,
-inject only the scoped sender token into worker runtime with delivery disabled, and
+The old TEST-NET inspection helper intentionally rejects later states;
+`restrict-mailu-ip.py` verifies only the IP-restricted disabled stage. The reviewed
+`enable-owned-smoke.py` subsequently enabled only the two owned accounts and
+advanced their custody to `enabled-owned-smoke`, preserving their credentials
+and IP restrictions. The sender token was injected only into worker runtime,
+initially with delivery disabled. The coordinator must
 verify permitted fixed SMTP and denied unrelated egress from the actual worker
 network. Keep both delivery/readiness switches false outside a separately gated
 owned trial. The API flag must temporarily be true to exercise its actual opt-in
@@ -105,11 +122,13 @@ delivery review. No direct SQL/outbox synthesis or real-recipient operator test
 is used. Preparing this source and disabled accounts does not release the main
 portal application.
 
-The separate fixed smoke receiver was created disabled, non-admin and limited
+The separate fixed smoke receiver was initially created disabled, non-admin and limited
 to 10 MiB, with no forwarding/spoofing/POP and with IMAP enabled as its intended
 use. Its discarded password and separate token custody never enter the portal.
-The token is restricted to the workstation interface `/32` provisionally; that
-is not a Mailu-observed NAT claim. Mailu account tokens are not protocol-specific.
+The token was restricted to the workstation interface `/32` provisionally;
+the actual bounded hostname-verified IMAP login subsequently accepted that
+restriction. This is distinct from a receiver-log NAT observation. Mailu
+account tokens are not protocol-specific.
 The actual preparation receipt is
 `deploy/receipts/2026-11-01-smoke-mailbox-0965c07.json`. The proposed bounded
 API/IMAP trial keeps only its unfunded generated wallet keys and initial mailbox
