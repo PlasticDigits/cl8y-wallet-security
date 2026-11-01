@@ -4,6 +4,16 @@
   "automation_id": "auto_cqn_6q-vhlg",
   "broad_operator_identity_copied_to_workload": false,
   "cadence_proposed": "20 3 * * * UTC",
+  "conditional_definition_parent_readback": {
+    "additional_run_triggered_on_enable": false,
+    "cron": "20 3 * * *",
+    "enabled": true,
+    "next_run_epoch_ms": 1793503200000,
+    "next_run_utc": "2026-11-01T03:20:00+00:00",
+    "resume_and_show_readback_completed_by_parent": true,
+    "timeout_ms": 600000,
+    "timezone": "UTC"
+  },
   "conditional_dependencies": [
     "running BB server/operator host",
     "active private wg0 routes",
@@ -39,6 +49,7 @@
   "released_clean_journal_and_owned_identity_checked_by_metadata_helper": true,
   "repeat_restore_or_provider_trial_for_native_proof": false,
   "reviewed_wrapper_source_sha": "f7a8c0a222bb119bc1ed218cddb300853afce2f6",
+  "runtime_configuration_changed_by_publication_agent": false,
   "schedule_disabled_during_manual_proof": true,
   "scope": "One successful native BB automation run of the independently reviewed fixed-source operator controller; this native cipher was not separately restored",
   "selected_coolify_and_s3_credentials_only_operator_memory": true,
