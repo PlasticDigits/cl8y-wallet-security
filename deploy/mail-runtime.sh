@@ -32,6 +32,12 @@ service_cid() {
   [[ "$found" =~ ^[a-f0-9]{64}$ ]]
   printf '%s' "$found"
 }
+optional_service_cid() {
+  local found
+  found=$(timeout 5 docker ps -a -q --no-trunc --filter "label=com.docker.compose.project=$APP" --filter "label=com.docker.compose.service=$1")
+  test -z "$found" || [[ "$found" =~ ^[a-f0-9]{64}$ ]]
+  printf '%s' "$found"
+}
 owned_app() {
   test "$(readc '{{index .Config.Labels "com.docker.compose.project"}}' "$1")" = "$APP"
   local revision
@@ -63,11 +69,11 @@ test "$(readc '{{index .Config.Labels "com.cl8y.scope"}}' "$GATEWAY")" = wallet-
 test "$(readc '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$GATEWAY")" = 44a2d3604b2051278aafcfa80fa4e19f4eb6c1d5
 test "$(timeout 5 docker network inspect --format '{{.Internal}}' "$NET")" = true
 test "$(readc '{{with index .NetworkSettings.Networks "wallet-security-notification"}}{{.NetworkID}}{{end}}' "$GATEWAY")" = e1f3b89f1f7b590b7fa34def87b39521927b5b28d251189734ebd019b84081b4
-api=$(service_cid api); worker=$(service_cid worker)
-owned_app "$api"; owned_app "$worker"
-private=$(readc "{{with index .NetworkSettings.Networks \"${APP}_private\"}}{{.NetworkID}}{{end}}" "$worker")
-[[ "$private" =~ ^[a-f0-9]{64}$ ]]
-test "$(timeout 5 docker network inspect --format '{{.Internal}}' "$private")" = true
+test "$(timeout 5 docker volume inspect --format '{{index .Labels "com.docker.compose.project"}}' "${APP}_pgdata")" = "$APP"
+test "$(timeout 5 docker volume inspect --format '{{index .Labels "com.docker.compose.volume"}}' "${APP}_pgdata")" = pgdata
+api=$(optional_service_cid api); worker=$(optional_service_cid worker)
+test -z "$api" || owned_app "$api"
+test -z "$worker" || owned_app "$worker"
 members=$(timeout 5 docker network inspect --format '{{len .Containers}}' "$NET")
 if test "$members" = 2; then
   # Rerunning the same release/mode may only find its own upgraded worker.
@@ -81,14 +87,20 @@ compose=(docker compose --env-file .env -f compose.yml -f "$overlay" --project-d
 timeout 15 "${compose[@]}" config --quiet
 stage=fence
 transition=true
-timeout 40 docker stop --time 25 "$worker" "$api" >/dev/null
-test "$(readc '{{.State.Running}}' "$worker")" = false
-test "$(readc '{{.State.Running}}' "$api")" = false
+for cid in "$worker" "$api"; do
+  if test -n "$cid"; then
+    timeout 35 docker stop --time 25 "$cid" >/dev/null
+    test "$(readc '{{.State.Running}}' "$cid")" = false
+  fi
+done
 stage=migrate_and_start
 # Do not launch an old generic restore job against a pre-migration dump.
 timeout 120 "${compose[@]}" up -d --no-build api worker backup >/dev/null
 stage=runtime_boundary
 api=$(service_cid api); worker=$(service_cid worker); postgres=$(service_cid postgres)
+private=$(timeout 5 docker network inspect --format '{{.Id}}' "${APP}_private")
+test "$(timeout 5 docker network inspect --format '{{.Internal}}' "$private")" = true
+test "$(readc "{{with index .NetworkSettings.Networks \"${APP}_private\"}}{{.NetworkID}}{{end}}" "$postgres")" = "$private"
 for cid in "$api" "$worker"; do
   owned_app "$cid"
   test "$(readc '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$cid")" = "$SOURCE"
