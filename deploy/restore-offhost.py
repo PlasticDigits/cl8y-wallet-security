@@ -17,7 +17,7 @@ from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from backup_control import Api, Failure, identifier, s3_client, safe_main
 
 
-def main():
+def main(owned_trial_session_counter=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--config', required=True)
     parser.add_argument('--min-smtp-sent-with-first-attempt', type=int, default=0)
@@ -104,6 +104,7 @@ def main():
             smtp_evidence = json.loads(sql("SELECT jsonb_build_object('total_outbox_rows',count(*),'smtp_sent_with_first_attempt',count(*) FILTER (WHERE delivery_transport='smtp' AND state='sent' AND first_attempt_at IS NOT NULL AND sent_at IS NOT NULL),'smtp_attempted_with_first_attempt',count(*) FILTER (WHERE delivery_transport='smtp' AND attempts>0 AND first_attempt_at IS NOT NULL)) FROM notification_outbox"))
         if args.min_smtp_sent_with_first_attempt and (smtp_evidence is None or smtp_evidence['smtp_sent_with_first_attempt'] < args.min_smtp_sent_with_first_attempt):
             raise Failure('restored_smtp_delivery_metadata_evidence_insufficient')
+        owned_trial_sessions = owned_trial_session_counter(sql, last['stamp']) if owned_trial_session_counter else None
         # Exercise incident-promotion auth invalidation only in this scratch DB.
         sql('BEGIN; DELETE FROM sessions; DELETE FROM challenges; DELETE FROM contact_verifications; COMMIT;')
         if sql('SELECT (SELECT count(*) FROM sessions)+(SELECT count(*) FROM challenges)+(SELECT count(*) FROM contact_verifications)') != '0':
@@ -125,6 +126,7 @@ def main():
             'exact_sqlx_checksums': True, 'aggregate_restored_counts': counts,
             'aggregate_restored_smtp_evidence': smtp_evidence,
             'minimum_required_smtp_sent_with_first_attempt': args.min_smtp_sent_with_first_attempt,
+            'owned_trial_sessions_before_scratch_auth_invalidation': owned_trial_sessions,
             'fresh_vault_age_decryption': True, 'fresh_contact_key_api_format_canary': True,
             'scratch_all_sessions_challenges_contact_tokens_invalidated': True,
             'original_timer_and_outbox_attempt_uncertainty_evidence_preserved': True,
