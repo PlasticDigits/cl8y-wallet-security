@@ -5,7 +5,7 @@
   "controller_release_path": "/home/answorld/.local/share/wallet-security-ops/releases/4c5995b26f84c35af55e0bc7cf6cc5cc0b027706",
   "metadata_helper_sha256": "7e92fc07ab4cb2fc92b19760488ca3da740030287c170e0cad07ef9c023da3f9",
   "cadence": "20 3 * * * UTC",
-  "timeout": "8m",
+  "timeout": "10m",
   "existing_user_manager_active": true,
   "existing_user_manager_linger": true,
   "wg0_active": true,
@@ -40,9 +40,10 @@
     "--interpreter",
     "python3",
     "--timeout",
-    "8m",
+    "10m",
     "--working-directory",
     "/home/answorld/.local/share/wallet-security-ops/releases/4c5995b26f84c35af55e0bc7cf6cc5cc0b027706",
     "--json"
-  ]
+  ],
+  "timeout_budget": "No-print auth <=30s, broker fetch + fixed300s guarded child <=390s, durable metadata <=90s, one owner notice <=20s; native outer10m"
 }

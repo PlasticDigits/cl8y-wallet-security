@@ -27,6 +27,7 @@ def run(command, timeout, env=None):
 def main():
     global phase
     os.umask(0o077)
+    os.environ['PYTHONDONTWRITEBYTECODE'] = '1'
     if not os.environ.get('BB_AUTOMATION_ID') or not os.environ.get('BB_CLI'):
         raise RuntimeError('native_automation_context_required')
     phase = 'fixed_source'
@@ -56,7 +57,7 @@ def main():
     phase = 'guarded_capture'
     run(['/home/answorld/.local/bin/bao-exec', '--only', 'COOLIFY_URL,COOLIFY_WIRE_TOKEN',
          '--', str(PYTHON), str(release / 'deploy/backup-capture.py'), '--config', str(CONFIG),
-         '--expected-source', SOURCE, '--expected-migration', '6', '--quiet'], 330)
+         '--expected-source', SOURCE, '--expected-migration', '6', '--quiet'], 390)
     phase = 'durable_state'
     state = json.loads(run([str(PYTHON), str(helper), '--controller-release', str(release),
                            '--config', str(CONFIG)], 90).stdout)
