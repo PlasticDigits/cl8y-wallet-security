@@ -136,7 +136,10 @@ part of the archive. Every capture needs a fresh pause acknowledgement.
 The deployed Coolify native S3 helper passes storage credentials through its
 CLI/config mechanism. This workflow does not invoke it. Operator-only Boto3
 uses explicit credentials transiently in memory from the authorized platform,
-with SDK logging disabled and hash-locked dependencies. No S3/operator/private
+with SDK logging disabled and hash-locked dependencies. The operator client derives
+the signing region from an exact official Hetzner location endpoint, following
+[Hetzner's Boto3 example](https://docs.hetzner.com/storage/object-storage/getting-started/using-libraries/),
+without changing the shared platform storage configuration. No S3/operator/private
 age/contact credential enters the sealer or temporary transport. A separate
 reviewed temporary transport may receive only a scoped, expiring ciphertext-read
 capability through protected runtime ENV and operator header. Platform-managed
