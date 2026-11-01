@@ -105,8 +105,13 @@ if [ "$persistent" = true ]; then
   remove_probe "$BINDING" wallet-security-mail-gateway-binding ''
   absence=false
   printf '%s\n' gateway_noauth_binding_cleanup=true
+  for pname in "$PROBE" "$BINDING"; do
+    found=$(timeout 3 docker ps -a -q --no-trunc --filter "name=^/$pname$")
+    [ -z "$found" ]
+  done
   gateway_owned
   [ "$(readc '{{.State.Running}}' "$CID")" = true ]
+  printf 'gateway_activation_final_state retained_cid=%s running=true owned_probes_absent=true\n' "$CID"
   printf 'gateway_activation_pass retained_cid=%s running_image_ref=%s worker_attached=false auth=false sends=0\n' "$CID" "$ref"
   started=false
 fi

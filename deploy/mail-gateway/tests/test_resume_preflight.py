@@ -53,7 +53,8 @@ elif a[0]=='stop':
  elif a[-1]!=p:raise SystemExit(1)
 elif a[0]=='rm':
  if os.environ.get('OWNED_REMOVE_FAIL')=='true':raise SystemExit(1)
- assert a[-1]==p;state['probe']=False
+ assert a[-1]==p
+ if os.environ.get('OWNED_REMOVE_LEAK')!='true':state['probe']=False
 else:raise SystemExit(1)
 path.write_text(json.dumps(state))
 '''
@@ -86,6 +87,6 @@ class Resume(unittest.TestCase):
   self.assertEqual(code,1);self.assertTrue(state['running']);self.assertEqual(state['starts'],1);self.assertEqual(state['stops'],0);self.assertFalse(state['probe'])
   self.assertIn('gateway_activation_pass',out);self.assertIn('gateway_noauth_probe_cleanup=true',out)
  def test_activation_failure_or_cleanup_failure_never_commits_persistence(self):
-  for flag in ('OWNED_TLS_FAIL','OWNED_PARTIAL_PROBE','OWNED_REMOVE_FAIL'):
+  for flag in ('OWNED_TLS_FAIL','OWNED_PARTIAL_PROBE','OWNED_REMOVE_FAIL','OWNED_REMOVE_LEAK'):
    _,state,out=self.run_case(activation=True,**{flag:True})
    self.assertFalse(state['running']);self.assertEqual(state['stops'],1);self.assertNotIn('gateway_activation_pass',out)
