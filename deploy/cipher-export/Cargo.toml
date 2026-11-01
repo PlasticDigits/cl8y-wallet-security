@@ -1,0 +1,9 @@
+[package]
+name = "wallet-security-cipher-export"
+version = "0.1.0"
+edition = "2021"
+[workspace]
+[dependencies]
+sha2 = "=0.10.9"
+subtle = "=2.6.1"
+libc = "=0.2.186"

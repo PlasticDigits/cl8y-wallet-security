@@ -1,0 +1,59 @@
+{
+  "fresh_sealer_binding": {
+    "actual_owned_cipher_mount_read_write": true,
+    "actual_owned_dump_mount_read_only": true,
+    "image_manifest_digest": "sha256:f86972fceca8c2032380cf272d1a9043520080da7a213c1e1ad38b006eb460a9",
+    "observation_job": "hqwhcm6nvvwsxjcprcws3t2h",
+    "observed_container_image_field": "sha256:f86972fceca8c2032380cf272d1a9043520080da7a213c1e1ad38b006eb460a9",
+    "observed_pinned_image_id": "sha256:f86972fceca8c2032380cf272d1a9043520080da7a213c1e1ad38b006eb460a9",
+    "producer_source_sha": "6ba5c8c8bcfba6b9b523ecabda4036f72f64a429",
+    "reviewed_image_config_digest": "sha256:49bae27daf43dad0ea75c035dffae5e4e91f5b10f08daac8c61b19e5259e8cb1"
+  },
+  "full_production_acceptance": "open",
+  "inspector_stopped_noenv_buildfalse_startfalse": true,
+  "lease_released": true,
+  "lease_version": 18,
+  "live_health": {
+    "migration": 5,
+    "server_time": "2026-11-01T01:29:32.596046Z",
+    "source_sha": "e44569e45b15dbee4b0347dff742f92bd85bedb2",
+    "status": "ok"
+  },
+  "observed_at": "2026-11-01T01:29:32.596046Z",
+  "observer_source_sha": "e0c69d85850f905cce2afdcd58f8fdacb5803136",
+  "owned_export_services_remaining": 0,
+  "owned_sealer_tasks_remaining": 0,
+  "private_listener_closed": true,
+  "probe": {
+    "ciphertext_get_or_upload": false,
+    "fresh_completed_pair_pause": true,
+    "private_authenticated_head_probe": true,
+    "producer_resumed_before_lease_release": true,
+    "temporary_export_stop_delete_confirmed": true
+  },
+  "registry_mapping_evidence": {
+    "exporter_manifest_to_config": true,
+    "method": "Anonymous scoped registry token in operator memory; raw immutable manifest SHA256 checked and config.digest matched reviewed digest",
+    "raw_daemon_image_fields_are_not_labeled_as_config": true,
+    "raw_registry_manifest_bytes_sha256_verified": true,
+    "sealer_manifest_to_config": true
+  },
+  "remote_journal_clean": true,
+  "remote_journal_intents": 0,
+  "runtime_proof": {
+    "actual_image_source_bound": true,
+    "actual_ro_owned_cipher_mount": true,
+    "actual_uid_limits_caps_nnp_verified": true,
+    "configured_manifest_digest": "sha256:7d90ccdec7b196b15401c2f5063795ed86a337d591a35e2521239db84698b6c0",
+    "forbidden_credentials_absent": true,
+    "observed_at": "2026-11-01T01:28:07.836500+00:00",
+    "observed_container_image_field": "sha256:7d90ccdec7b196b15401c2f5063795ed86a337d591a35e2521239db84698b6c0",
+    "observed_pinned_image_id": "sha256:7d90ccdec7b196b15401c2f5063795ed86a337d591a35e2521239db84698b6c0",
+    "operator_observation_job": "re0inpvytrp71axmpdhzaghz",
+    "private_listener_only_verified": true,
+    "reviewed_image_config_digest": "sha256:69d2e358c750593464b9590cfe48d37b3b04617fadd41e49501b57ae8d32878b"
+  },
+  "scope": "Actual private authenticated HEAD and owned cleanup; no ciphertext GET, S3 upload or offhost restore acceptance",
+  "unattended_schedule_activated": false,
+  "unknown_task_or_export_hold": false
+}

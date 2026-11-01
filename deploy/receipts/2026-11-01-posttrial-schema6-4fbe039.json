@@ -1,0 +1,157 @@
+{
+  "backup_identity": {
+    "credential_values_exported_or_logged": false,
+    "existing_backup_credentials_used_only_inside_own_container": true,
+    "identity_line": "BACKUP_IDENTITY_VERIFIED source=4fbe03977337925f6185b393a8aa39437095b097 manifest=sha256:ff9dc660dabb80a426c4cd0f52e222277549756620d0cc457c4e05cc8c9ceb4d actual_image_field=sha256:ff9dc660dabb80a426c4cd0f52e222277549756620d0cc457c4e05cc8c9ceb4d uid=999 project_owned=true service=backup owned_backups_rw=true database_role=security_backup migration=6",
+    "observation_job": "jrbeknmqreksrmwgkxkhwhzy",
+    "observed_at": "2026-11-01T02:15:51.219394+00:00",
+    "observer_source_sha": "2953959a6da1d84d951529d99c1ad3a021d27e02"
+  },
+  "cleanup": {
+    "completed_cipher_sha256": "66b1b244c9b2fa3c853b96d466301f357c8aae63b16603d11b4aa5a9646ac48a",
+    "inspector_stopped_noenv_buildfalse_startfalse": true,
+    "lease_released": true,
+    "lease_version": 114,
+    "live_health": {
+      "migration": 6,
+      "server_time": "2026-11-01T02:32:10.933928Z",
+      "source_sha": "4fbe03977337925f6185b393a8aa39437095b097",
+      "status": "ok"
+    },
+    "observed_at": "2026-11-01T02:32:10.933928Z",
+    "owned_export_services_remaining": 0,
+    "owned_sealer_tasks_remaining": 0,
+    "private_listener_closed": true,
+    "producer_resumed_before_lease_release": true,
+    "remote_journal_clean": true,
+    "remote_journal_intents": 0,
+    "runtime_proof": {
+      "actual_image_source_bound": true,
+      "actual_ro_owned_cipher_mount": true,
+      "actual_uid_limits_caps_nnp_verified": true,
+      "configured_manifest_digest": "sha256:7d90ccdec7b196b15401c2f5063795ed86a337d591a35e2521239db84698b6c0",
+      "forbidden_credentials_absent": true,
+      "observed_at": "2026-11-01T02:27:02.669865+00:00",
+      "observed_container_image_field": "sha256:7d90ccdec7b196b15401c2f5063795ed86a337d591a35e2521239db84698b6c0",
+      "observed_pinned_image_id": "sha256:7d90ccdec7b196b15401c2f5063795ed86a337d591a35e2521239db84698b6c0",
+      "operator_observation_job": "exuhln44ynkoe9mk82nvileq",
+      "private_listener_only_verified": true,
+      "reviewed_image_config_digest": "sha256:69d2e358c750593464b9590cfe48d37b3b04617fadd41e49501b57ae8d32878b"
+    },
+    "unknown_task_or_export_hold": false
+  },
+  "controller_source_sha": "4c5995b26f84c35af55e0bc7cf6cc5cc0b027706",
+  "durable_operator_state": {
+    "exact_source_sqlx_checksum_versions": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6
+    ],
+    "last_backup_cipher_sha256": "66b1b244c9b2fa3c853b96d466301f357c8aae63b16603d11b4aa5a9646ac48a",
+    "migration": 6,
+    "permanent_config_mode": "0600",
+    "prior_schema5_public_receipts_preserved": true,
+    "private_kv_cas_fresh_readback_version": 5,
+    "retained_schema5_and_schema6_backup_history_entries": 3,
+    "workload_image_config": "sha256:296ada1e15c704943511af859d62d43922f7ce352d51b23adaafdc70c6d0a2ea",
+    "workload_image_manifest": "sha256:ff9dc660dabb80a426c4cd0f52e222277549756620d0cc457c4e05cc8c9ceb4d",
+    "workload_source_sha": "4fbe03977337925f6185b393a8aa39437095b097"
+  },
+  "fresh_schema6_snapshot": {
+    "api_or_worker_restarted": false,
+    "application_task_removed": true,
+    "backup_container_identity_verified": true,
+    "cipher_sha256": "66b1b244c9b2fa3c853b96d466301f357c8aae63b16603d11b4aa5a9646ac48a",
+    "dump_utc": "20261101T021727Z",
+    "migration": 6,
+    "new_completed_sealed_pair_verified": true,
+    "read_only_database_role": "security_backup",
+    "source_sha": "4fbe03977337925f6185b393a8aa39437095b097"
+  },
+  "full_production_acceptance": "parent controlled; unattended coverage still separate",
+  "independent_agent_actual_receipt_review": "accepted after actual SMTP transport/first_attempt, owned source-session and final-cleanup evidence",
+  "observer_source_sha": "2953959a6da1d84d951529d99c1ad3a021d27e02",
+  "offhost": {
+    "anonymous_exact_object_head_denied": true,
+    "authenticated_exact_object_readback_hash_verified": true,
+    "cipher_bytes": 32127,
+    "cipher_sha256": "66b1b244c9b2fa3c853b96d466301f357c8aae63b16603d11b4aa5a9646ac48a",
+    "complete_cipher_hash_verified_before_upload": true,
+    "content_addressed_object_key": "backups/wallet-security-20261101T021727Z.dump.66b1b244c9b2fa3c853b96d466301f357c8aae63b16603d11b4aa5a9646ac48a.age",
+    "dump_utc": "20261101T021727Z",
+    "fresh_completed_pair_pause_for_this_capture": true,
+    "independent_private_kv_producer_ledger_verified": true,
+    "max_source_age_seconds": 90000,
+    "native_s3_helpers_invoked": false,
+    "private_age_contact_operator_or_s3_credentials_in_workload": false,
+    "verified_at": "2026-11-01T02:28:04.862181+00:00"
+  },
+  "owned_bucket": {
+    "abort_incomplete_multipart_days": 1,
+    "authenticated_owner_and_canonical_user_only_private_acl_verified": true,
+    "bucket_policy_absent_verified": true,
+    "canonical_catchall_expiration_days": 4,
+    "created_by_this_operator_after_confirmed_absence": true,
+    "durable_owned_configuration_private_kv_readback_version": 5,
+    "lifecycle_readback_verified": true,
+    "never_versioned_verified": true,
+    "operator_sdk_region": "nbg1",
+    "physical_deletion_timing": "Provider asynchronous after expiry eligibility; no exact hard deletion deadline",
+    "s3_credentials_in_arguments_or_unmanaged_local_files": false,
+    "shared_bucket_mutations": false
+  },
+  "owned_trial_session_evidence": {
+    "bridge_parameter_transport": "server PREPARE/EXECUTE over private psql STDIN only",
+    "helper_source_sha": "9101d9e9c998c8993592eaff745734d29cd9acf0",
+    "identity_keys_addresses_or_uuid_output": false,
+    "live_sql_mutation": false,
+    "new_login": false
+  },
+  "producer_source_sha": "6ba5c8c8bcfba6b9b523ecabda4036f72f64a429",
+  "restore": {
+    "aggregate_restored_counts": {
+      "assignments": 2,
+      "contacts": 1,
+      "profiles": 3,
+      "wallets": 5
+    },
+    "aggregate_restored_smtp_evidence": {
+      "smtp_attempted_with_first_attempt": 3,
+      "smtp_sent_with_first_attempt": 3,
+      "total_outbox_rows": 3
+    },
+    "custody_version": 1,
+    "delivery_and_chain_workers_started": false,
+    "exact_sqlx_checksums": true,
+    "fresh_contact_key_api_format_canary": true,
+    "fresh_vault_age_decryption": true,
+    "migration": 6,
+    "minimum_required_smtp_sent_with_first_attempt": 3,
+    "offhost_cipher_sha256": "66b1b244c9b2fa3c853b96d466301f357c8aae63b16603d11b4aa5a9646ac48a",
+    "original_timer_and_outbox_attempt_uncertainty_evidence_preserved": true,
+    "owned_trial_sessions_before_scratch_auth_invalidation": {
+      "active_as_of_source_dump_utc": "20261101T021727Z",
+      "active_session_count": 0,
+      "profile_identity_output": false,
+      "profile_present": true
+    },
+    "private_key_files_or_arguments_used": false,
+    "production_data_or_auth_mutated": false,
+    "promoted_to_live": false,
+    "schema_source_commit_checked": "4fbe03977337925f6185b393a8aa39437095b097",
+    "scratch_all_sessions_challenges_contact_tokens_invalidated": true
+  },
+  "restored_outbox_metadata_scope": "every present field except unchanged opaque encrypted_payload",
+  "restored_timer_metadata_scope": [
+    "full assignments",
+    "contacts except opaque encrypted_destination",
+    "full security_events"
+  ],
+  "schema_6_offhost_proof": "actual accepted",
+  "scope": "Actual post-owned-SMTP-trial schema-6 offhost backup and offline fenced recovery; standing schedule remains unactivated",
+  "scratch_postgres_containers_remaining": 0,
+  "unattended_schedule_activated": false
+}

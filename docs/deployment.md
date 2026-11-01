@@ -121,3 +121,107 @@ network (no shared application network or published ports), inject provider
 credentials only through Coolify, and verify both permitted and denied egress.
 Do not merely attach the worker to the shared `coolify` network. Keep independent final
 security/deployment acceptance open until these checks pass on the final SHA.
+
+## Off-host capture and incident recovery
+
+The separate sealer is public-recipient-only, uid999, read-only root, no
+capabilities or network, with the portal's dump volume mounted read-only. Its
+framework-resolved output volume must be bound to actual daemon Mount.Name and
+RW flags; the raw requested name alone is insufficient. The current confirmed
+mapping is retained only in private operator metadata. Only one completed age
+cipher/checksum pair is kept. `pause` acknowledges quiescence only after commit
+and validates header/hash/source age <=25h; pause flags are tmpfs-only and never
+part of the archive. Every capture needs a fresh pause acknowledgement.
+
+The deployed Coolify native S3 helper passes storage credentials through its
+CLI/config mechanism. This workflow does not invoke it. Operator-only Boto3
+uses explicit credentials transiently in memory from the authorized platform,
+with SDK logging disabled and hash-locked dependencies. The operator client derives
+the signing region from an exact official Hetzner location endpoint, following
+[Hetzner's Boto3 example](https://docs.hetzner.com/storage/object-storage/getting-started/using-libraries/),
+without changing the shared platform storage configuration. No S3/operator/private
+age/contact credential enters the sealer or temporary transport. A separate
+reviewed temporary transport may receive only a scoped, expiring ciphertext-read
+capability through protected runtime ENV and operator header. Platform-managed
+runtime secret storage is distinct from unmanaged local credential files.
+
+Uploads require a per-volume private-KV CAS lease plus local process lock,
+completed fresh pair, exact resource/context/image/volume binding, private-only
+transport and complete ciphertext SHA256 validation BEFORE S3. An independent
+operator-KV cipher ledger binds source/migration/hash outside the S3 write
+boundary. Content-addressed objects are not rewritten just to refresh their age.
+The destination must be a NEW owned private never-versioned bucket: four-day
+expiry eligibility, one-day aborted multipart cleanup, full policy readback,
+and no shared-bucket lifecycle changes. UTC rounding and provider asynchronous
+execution mean expiry eligibility is not a promise of exact physical deletion.
+Only the latest inner dump avoids nested retention amplification.
+
+After an operator-host restart, recover missing local configuration through
+read-only reconciliation before running any provision or capture command.
+Resolve the single exact portal by name and pinned live source; read its
+project/environment/destination/server relationships and the single owned
+sealer. Reconstruct the expected sealer declaration from the committed
+`compose.backup-sealer.yml`, reviewed producer image and fresh custody public
+recipient, then compare the complete actual declaration and resource context.
+Do not run `provision-backup-sealer.py` as a discovery command: it requests start.
+The historical runtime receipt alone does not authorize setting
+`daemon_binding_verified`; reobserve the exact current daemon mount names,
+read/write flags and image before restoring that field.
+
+Read `wallet-security/offhost-lease` from the existing identity-scoped private
+KV before claiming the volume. Retain every unresolved task/export intent,
+including its resource identity, even when its lease has expired. An absent
+local file, elapsed TTL or copied configuration cannot clear the remote
+journal. Reconcile each exact task's execution and each exact export resource,
+daemon and private listener; do not resume the producer or release a claim
+while any queued/late execution or cleanup remains unknown. Search owned
+service names for a create with a lost response before creating another helper.
+Recover an existing bucket only with the independently retained creation and
+owner evidence; an empty, accessible or similarly named bucket is insufficient.
+
+The reviewed ciphertext exporter artifact is manifest
+`sha256:7d90ccdec7b196b15401c2f5063795ed86a337d591a35e2521239db84698b6c0`,
+config `sha256:69d2e358c750593464b9590cfe48d37b3b04617fadd41e49501b57ae8d32878b`,
+source `f5e40b588ccb00ba3d4712bfccd1200b42bd8a45`. Recovered configuration must
+retain both `export_image` and `export_image_config_digest`. The observer
+checks the configured manifest, pinned-reference image ID and source separately;
+container `.Image` and image `.Id` may match only that reviewed manifest or
+config. Neither raw field is relabeled as an observed config digest: on the
+deployed daemon both fields report the manifest, while the hash-verified raw
+registry manifest establishes its config mapping. A local
+image fixture remains distinct from actual private binding and export proof.
+
+The intended conditional export schedule runs through the operator's existing
+broker on the BB server/workstation, rather than placing broad credentials in a
+workload. Its source/runtime/automation activation is separately gated. This
+requires that operator host and VPN be online; off-host RPO is at least the daily
+cadence plus any operator-host outage. Server-side daily local dumps continue
+independently. Stale/no completed pair, cleanup or policy failures must fail
+visibly and remain owned by the deployment thread, never become a human
+monitoring chore. No one-off export establishes unattended coverage.
+
+Off-host restore proof downloads only the exact owned object, verifies its full
+cipher hash against the independent KV ledger, retrieves recovery material
+fresh from the scoped vault, and passes the private age identity by inherited
+pipe only. It restores into an offline disposable PostgreSQL container with no
+published ports or API/delivery/chain workers, compares every SQLx version and
+checksum to the pinned source, and removes the scratch resource. A contact-key
+canary is owned and exists only in scratch; it is not evidence of real recipient
+delivery or real-user contact recovery.
+
+A real incident promotion remains fenced: outbound and mutating API stay off
+until the lost-state window and current authoritative chain state are
+reconciled. Invalidate ALL restored sessions/challenges and one-use contact
+pairing/verification tokens. Preserve original deadlines, attempts, delivery
+uncertainty and other audit evidence. Wall-clock maturity alone must not resume
+old profile/contact changes; require fresh authorized confirmation when state is
+uncertain. Do not replay uncertain outbox items automatically. Never run a pre-6
+worker against a database containing SMTP transport rows. These are recovery
+procedures, not mutations to current live authentication or state during drills.
+
+The actual post-trial schema-6 offhost recovery receipt is
+[`2026-11-01-posttrial-schema6-4fbe039.json`](../deploy/receipts/2026-11-01-posttrial-schema6-4fbe039.json).
+It verifies three sent SMTP rows with first-attempt metadata, complete saved
+assignment/contact/event and outbox metadata preservation, and zero active
+sessions for the present owned trial profile before scratch auth invalidation.
+This one-off proof does not establish unattended coverage.

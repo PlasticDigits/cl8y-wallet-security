@@ -1,0 +1,33 @@
+services:
+  export:
+    image: ${CIPHER_EXPORT_IMAGE:?}
+    user: "999:999"
+    restart: "no"
+    network_mode: host
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    environment:
+      EXPORT_TOKEN: ${EXPORT_TOKEN:?}
+      EXPECTED_CIPHER_SHA256: ${EXPECTED_CIPHER_SHA256:?}
+      EXPORT_FILENAME: ${EXPORT_FILENAME:?}
+      EXPORT_EXPIRES_UNIX: ${EXPORT_EXPIRES_UNIX:?}
+    volumes:
+      - cipher:/export:ro
+    mem_limit: 64m
+    cpus: 0.1
+    pids_limit: 16
+    labels: [traefik.enable=false]
+    logging:
+      driver: json-file
+      options: {max-size: 1m, max-file: "1"}
+    healthcheck:
+      test: [CMD, /app/cipher-export, --healthcheck]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+      start_period: 20s
+volumes:
+  cipher:
+    external: true
+    name: ${SEALED_BACKUP_VOLUME:?}
