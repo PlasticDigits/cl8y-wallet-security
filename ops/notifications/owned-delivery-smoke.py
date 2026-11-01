@@ -289,7 +289,7 @@ def main():
             'old_verified_channel_retained': True, 'distinct_owned_messages': 3,
             'message_id_sha256': [hashlib.sha256(value.encode()).hexdigest() for value in identifiers],
             'imap_hostname_verified': True, 'workstation_ip_restriction_accepted': True,
-            'raw_payloads_or_addresses_emitted': False, 'sql_writes': 0, 'chain_transactions': 0}, sort_keys=True))
+            'raw_payloads_or_addresses_emitted': False, 'direct_sql_writes': 0, 'chain_transactions': 0}, sort_keys=True))
     finally:
         if portal.csrf:
             if proposal_id:
