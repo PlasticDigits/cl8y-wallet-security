@@ -41,6 +41,25 @@
     "unknown_task_or_export_hold": false
   },
   "controller_source_sha": "4c5995b26f84c35af55e0bc7cf6cc5cc0b027706",
+  "durable_operator_state": {
+    "exact_source_sqlx_checksum_versions": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6
+    ],
+    "last_backup_cipher_sha256": "66b1b244c9b2fa3c853b96d466301f357c8aae63b16603d11b4aa5a9646ac48a",
+    "migration": 6,
+    "permanent_config_mode": "0600",
+    "prior_schema5_public_receipts_preserved": true,
+    "private_kv_cas_fresh_readback_version": 5,
+    "retained_schema5_and_schema6_backup_history_entries": 3,
+    "workload_image_config": "sha256:296ada1e15c704943511af859d62d43922f7ce352d51b23adaafdc70c6d0a2ea",
+    "workload_image_manifest": "sha256:ff9dc660dabb80a426c4cd0f52e222277549756620d0cc457c4e05cc8c9ceb4d",
+    "workload_source_sha": "4fbe03977337925f6185b393a8aa39437095b097"
+  },
   "fresh_schema6_snapshot": {
     "api_or_worker_restarted": false,
     "application_task_removed": true,
@@ -76,7 +95,7 @@
     "bucket_policy_absent_verified": true,
     "canonical_catchall_expiration_days": 4,
     "created_by_this_operator_after_confirmed_absence": true,
-    "durable_owned_configuration_private_kv_readback_version": 4,
+    "durable_owned_configuration_private_kv_readback_version": 5,
     "lifecycle_readback_verified": true,
     "never_versioned_verified": true,
     "operator_sdk_region": "nbg1",
