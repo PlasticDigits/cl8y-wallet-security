@@ -1,0 +1,19 @@
+{
+  "record": "owned_smoke_mailbox_disabled_prepared",
+  "date_utc": "2026-11-01",
+  "source": "0965c079a9546f431e8e064d2060991720a68ab9",
+  "command": "bao-exec --only COOLIFY_WIRE_TOKEN,COOLIFY_URL -- python3 ops/notifications/enroll-smoke-mailbox.py",
+  "created": true,
+  "mailbox_disabled": true,
+  "imap_purpose_enabled": true,
+  "protocol_exclusive_credential": false,
+  "provisional_workstation_ip_only": true,
+  "observed_receiver_source_claim": false,
+  "quota_bytes": 10485760,
+  "custody_readback": true,
+  "admin": false,
+  "forwarding": false,
+  "auth_attempts": 0,
+  "sends": 0,
+  "main_runtime_changes": false
+}

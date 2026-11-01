@@ -54,6 +54,41 @@ def commands(app, sha):
     if max(len(build.encode()),len(start.encode())) > 255: raise RuntimeError('command_bound')
     return build,start
 
+def observer_record(line):
+    try: row=json.loads(line)
+    except (ValueError,TypeError): return False
+    if not isinstance(row,dict): return False
+    schemas={
+      'gateway_reproduction_created':({'record','id'},),
+      'gateway_capture_state':({'record','id','running'},),
+      'container':({'record','role','present'}, {'record','role','present','id','image_ref','user','running','network_mode','memory','nano_cpus','pids_limit','read_only','cap_drop_csv','security_opt_csv','nnp','mount_count'}),
+      'mount':({'record','role','type','name','destination','rw'},),
+      'env_name':({'record','role','name'},),
+      'gateway_attachment':({'record','name','id','aliases_csv'},),
+      'network':({'record','name','id','driver','internal','members'},),
+      'network_member':({'record','network_id','id','name','member_kind'},),
+      'network_redacted_members':({'record','network_id','self_observer_helpers','other_members'},),
+      'owned_network_event':({'record','action','network_id','name','container_id','container_kind','time'},),
+    }
+    if row.get('record') not in schemas or set(row) not in schemas[row['record']]: return False
+    if 'role' in row and row['role'] not in ('gateway','sealer'): return False
+    if row['record']=='network_member' and row.get('name') != {'gateway':'wallet-security-mail-gateway','sealer':'seal-3nolvrgyhudkv3itihuyuim9','managed_proxy':'coolify-proxy'}.get(row.get('member_kind')):return False
+    if row['record']=='owned_network_event' and row.get('container_kind') not in ('none','gateway','sealer','managed_proxy','other_redacted'):return False
+    if row['record']=='owned_network_event' and row.get('container_kind') in ('none','other_redacted') and row.get('container_id')!='':return False
+    if row['record']=='env_name' and not re.fullmatch('[a-zA-Z_][a-zA-Z0-9_]{0,127}',row.get('name','')):return False
+    for key in ('id','network_id','container_id'):
+        if key in row and (not isinstance(row[key],str) or not re.fullmatch('[a-f0-9]{64}|',row[key])):return False
+    if 'image_ref' in row and not re.fullmatch('sha256:[a-f0-9]{64}',row['image_ref']):return False
+    if 'destination' in row and not re.fullmatch('/[a-zA-Z0-9._/-]{0,240}',row['destination']):return False
+    for key,value in row.items():
+        if value is None or isinstance(value,bool): continue
+        if isinstance(value,int):
+            if not -1<=value<=2**63-1:return False
+        elif isinstance(value,str):
+            if len(value)>256 or not re.fullmatch('[a-zA-Z0-9_.:/,=-]*',value):return False
+        else:return False
+    return True
+
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--create', action='store_true')
@@ -62,7 +97,16 @@ def main():
     p.add_argument('--branch')
     p.add_argument('--deployment')
     p.add_argument('--receipts', action='store_true')
+    p.add_argument('--observe', action='store_true')
+    p.add_argument('--reproduce', action='store_true')
+    p.add_argument('--noauth-preflight', action='store_true')
+    p.add_argument('--activate-retained', action='store_true')
     a = p.parse_args()
+    if a.activate_retained and (a.observe or a.reproduce or a.noauth_preflight or a.create or a.deployment or a.receipts): raise RuntimeError('operation_conflict')
+    if a.activate_retained and a.app != 'y08cgj4rjem3ldgfmxb11nsp': raise RuntimeError('fixed_activation_app_required')
+    if a.noauth_preflight and (a.observe or a.reproduce or a.create or a.deployment or a.receipts): raise RuntimeError('operation_conflict')
+    if a.reproduce and (a.observe or a.create or a.deployment or a.receipts): raise RuntimeError('operation_conflict')
+    if a.observe and (a.create or a.deployment or a.receipts): raise RuntimeError('operation_conflict')
     if a.receipts and not a.deployment: raise RuntimeError('deployment_required')
     if a.create:
         if a.app or a.deployment or a.receipts: raise RuntimeError('operation_conflict')
@@ -96,17 +140,32 @@ def main():
             logs=deployment.get('logs',[])
             if isinstance(logs,str): logs=json.loads(logs)
             if not isinstance(logs,list): raise RuntimeError('logs_shape_invalid')
-            patterns=[r'mail_gateway_build_hook_entered', r'mail_gateway_image_inputs_verified', r'mail_gateway_tls_window start_utc=[0-9]{8}T[0-9]{6}Z end_utc=[0-9]{8}T[0-9]{6}Z ehlo=cl8y-gateway-[0-9]{8}T[0-9]{6}Z-[a-f0-9]{8}', r'mail_gateway_preflight_pass uid=10001 no_default_route=true alias_private=true hostname_verified=true direct_mailu_denied=true other_targets_denied=true auth=false sends=0',
+            patterns=[r'gateway_activation_final_state retained_cid=[a-f0-9]{64} running=true owned_probes_absent=true',r'gateway_activation_pass retained_cid=[a-f0-9]{64} running_image_ref=sha256:[a-f0-9]{64} worker_attached=false auth=false sends=0',r'gateway_prestart_identity_verified',r'gateway_binding_cleanup_identity_refused',r'gateway_noauth_(?:owned_stopped_retained=true|owned_stop_failed|probe_cleanup=true|probe_cleanup_failed|binding_cleanup=true|binding_cleanup_failed|preexisting_probe_refused|prestart_fixed_identity_and_networks=true)',r'gateway_noauth_tls_preflight_pass workload_source=[a-f0-9]{40} retained_cid=[a-f0-9]{64} running_image_ref=sha256:[a-f0-9]{64} nat_source_pending=true',r'gateway_topology_capture_complete running=(?:true|false)',r'gateway_topology_(?:capture_failed|cleanup_owned_stopped_retained=true|cleanup_failed|cleanup_lookup_failed|cleanup_identity_refused|absence_query_failed|preexisting_container_refused|exact44_raw_verified|diagnostic_complete_not_runtime_acceptance=true|structural_guards_pass_not_delivery=true)',r'observer_(?:read_only_complete_service_changes=false|fixed_metadata_failed)', r'mail_gateway_build_hook_entered', r'mail_gateway_image_inputs_verified', r'mail_gateway_tls_window start_utc=[0-9]{8}T[0-9]{6}Z end_utc=[0-9]{8}T[0-9]{6}Z ehlo=cl8y-gateway-[0-9]{8}T[0-9]{6}Z-[a-f0-9]{8}', r'mail_gateway_preflight_pass uid=10001 no_default_route=true alias_private=true hostname_verified=true direct_mailu_denied=true other_targets_denied=true auth=false sends=0',
                 r'mail_gateway_runtime_pass source_sha=[a-f0-9]{40} running_image_ref=sha256:[a-f0-9]{64} built_config_digest=sha256:[a-f0-9]{64} uid=10001 ports=0 mounts=0 credentials=false networks=2 memory_bytes=67108864 nano_cpus=100000000 pids=16 nnp=true worker_direct_egress_denied=true',
-                r'mail_gateway_(?:preflight|runtime)_failed stage=(?:identity|routes|direct_denial|alias|tls|credentials|networks|resource_bounds|worker_denial|tls_probe|receipt)']
+                r'mail_gateway_(?:preflight|runtime)_failed stage=(?:identity|routes|direct_denial|alias|tls|credentials|networks|network_names|network_internal|network_members|resource_bounds|worker_denial|tls_probe|receipt)']
             for item in logs:
                 if not isinstance(item,dict): continue
                 output=item.get('output')
                 if not isinstance(output,str): continue
                 for line in output.splitlines():
                     if any(re.fullmatch(pattern,line) for pattern in patterns): print(line)
+                    elif observer_record(line): print(line)
         else:
             print(json.dumps({'application_uuid':a.app,'deployment_uuid':a.deployment,'status':status}))
+        return
+    if a.observe or a.reproduce or a.noauth_preflight or a.activate_retained:
+        build='timeout 90 bash deploy/mail-gateway/resume-preflight.sh --activate-retained' if a.activate_retained else 'timeout 90 bash deploy/mail-gateway/resume-preflight.sh' if a.noauth_preflight else 'timeout 45 bash deploy/mail-gateway/reproduce.sh' if a.reproduce else 'timeout 35 bash deploy/mail-gateway/observe.sh'
+        settings=dict(git_branch=a.branch,git_commit_sha=a.sha,is_raw_compose_deployment_enabled=True,
+            is_preserve_repository_enabled=True,is_auto_deploy_enabled=False,is_preview_deployments_enabled=False,
+            inject_build_args_to_dockerfile=False,include_coolify_default_variables=False,redact_all_env_values_in_logs=True,
+            docker_compose_custom_build_command=build)
+        api('PATCH','/applications/'+a.app,settings)
+        actual=owned(a.app)
+        if actual.get('git_commit_sha') != a.sha or actual.get('docker_compose_custom_build_command') != build or not actual.get('settings',{}).get('is_raw_compose_deployment_enabled'):
+            raise RuntimeError('observer_hook_not_applied')
+        result=api('POST','/deploy',{'uuid':a.app,'force':False})
+        print(json.dumps({'application_uuid':a.app,'observer_source_sha':a.sha,'observer_only':not (a.reproduce or a.noauth_preflight or a.activate_retained),'topology_reproduction_only':a.reproduce,'noauth_preflight_only':a.noauth_preflight,'persistent_activation_only':a.activate_retained,
+            'deployment_uuids':[identifier(x.get('deployment_uuid')) for x in result.get('deployments',[])]}))
         return
     build,start=commands(a.app,a.sha)
     envs=api('GET','/applications/'+a.app+'/envs')

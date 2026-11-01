@@ -1,0 +1,17 @@
+{
+  "record": "post_receiver_retirement_sender_scope",
+  "recorded_at_utc": "2026-11-01T02:36:14.968895+00:00",
+  "enrollment_request_helper_source": "e4b9a438c583debf5b6d130c9cd8af307d14405b",
+  "scope": "exact existing dedicated sender privateKV, user and stored numeric token; GET/read only",
+  "read_only": true,
+  "normal_sender_enabled": true,
+  "owned_sender_token_present": true,
+  "verified_gateway_ip_only": true,
+  "admin": false,
+  "imap": false,
+  "spoofing": false,
+  "custody_scope_matches": true,
+  "smtp_imap_auth_attempts": 0,
+  "sends": 0,
+  "portal_or_database_changes": false
+}

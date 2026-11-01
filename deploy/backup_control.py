@@ -73,18 +73,46 @@ def s3_client(storage):
         raise Failure('invalid_offhost_endpoint')
     if not storage.get('key') or not storage.get('secret'):
         raise Failure('platform_storage_credential_unavailable')
-    return boto3.client('s3', endpoint_url=storage['endpoint'], region_name=storage['region'],
+    # Coolify may retain its generic us-east-1 default. Hetzner requires the
+    # location encoded in its official endpoint for bucket creation/signing.
+    region = storage['region']
+    location = re.fullmatch(r'(fsn1|nbg1|hel1)\.your-objectstorage\.com', parsed.hostname)
+    if location:
+        region = location[1]
+    return boto3.client('s3', endpoint_url=storage['endpoint'], region_name=region,
         aws_access_key_id=storage['key'], aws_secret_access_key=storage['secret'],
         config=Config(signature_version='s3v4', connect_timeout=10, read_timeout=30,
                       retries={'total_max_attempts': 1}, proxies={},
+                      request_checksum_calculation='when_required', response_checksum_validation='when_required',
                       s3={'addressing_style': 'path' if storage.get('use_path_style_endpoint', True) else 'virtual'}))
 
 
 def s3_error_code(error):
     code = getattr(error, 'response', {}).get('Error', {}).get('Code')
-    allowed = {'404', '403', 'NoSuchBucket', 'NoSuchKey', 'AccessDenied', 'NoSuchLifecycleConfiguration',
-               'BucketAlreadyOwnedByYou', 'BucketAlreadyExists', 'SignatureDoesNotMatch', 'InvalidLocationConstraint'}
+    allowed = {'404', '403', 'NoSuchBucket', 'NoSuchKey', 'AccessDenied', 'NoSuchLifecycleConfiguration', 'NoSuchBucketPolicy',
+               'BucketAlreadyOwnedByYou', 'BucketAlreadyExists', 'SignatureDoesNotMatch', 'InvalidLocationConstraint', 'LocationConstraintConflict'}
     return code if code in allowed else 'storage_request_failed'
+
+
+def validate_lifecycle(response):
+    rules = response.get('Rules', [])
+    if len(rules) != 1: raise Failure('offhost_lifecycle_rule_count_differs')
+    rule = rules[0]
+    allowed = {'ID', 'Status', 'Prefix', 'Filter', 'Expiration', 'AbortIncompleteMultipartUpload'}
+    catchall = (('Prefix' in rule and rule['Prefix'] == '' and 'Filter' not in rule)
+                or ('Prefix' not in rule and rule.get('Filter') == {'Prefix': ''}))
+    if (set(rule) - allowed or not catchall or rule.get('ID') != 'wallet-security-four-day-expiry'
+            or rule.get('Status') != 'Enabled' or rule.get('Expiration') != {'Days': 4}
+            or rule.get('AbortIncompleteMultipartUpload') != {'DaysAfterInitiation': 1}):
+        raise Failure('offhost_lifecycle_not_canonical_catchall')
+
+
+def require_no_bucket_policy(client, bucket):
+    try: client.get_bucket_policy(Bucket=bucket)
+    except Exception as error:
+        if s3_error_code(error) == 'NoSuchBucketPolicy': return
+        raise Failure('offhost_bucket_policy_unproven') from None
+    raise Failure('offhost_bucket_policy_present')
 
 
 def safe_main(function):
@@ -95,3 +123,24 @@ def safe_main(function):
     except Exception as error:
         # Never interpolate exception bodies/SDK responses: they may echo material.
         raise SystemExit('backup_operation_failed ' + type(error).__name__) from None
+
+
+def validate_sealer(api, config):
+    import hashlib
+    import yaml
+    portal = api.call('GET', '/applications/' + identifier(config['portal_app_uuid']))
+    if portal.get('name') != 'cl8y-wallet-security':
+        raise Failure('portal_identity_changed')
+    service = api.call('GET', '/services/' + identifier(config['sealer_uuid']))
+    destination = service.get('destination') or {}
+    server = destination.get('server') or {}
+    if (service.get('name') != config['sealer_name']
+            or any(service.get(key) != value for key, value in config['resource_context'].items())
+            or destination.get('uuid') != config['destination_uuid']
+            or server.get('uuid') != config['server_uuid']):
+        raise Failure('sealer_resource_context_changed')
+    compose = yaml.safe_load(service.get('docker_compose_raw') or '')
+    digest = hashlib.sha256(json.dumps(compose, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+    if digest != config['desired_compose_sha256']:
+        raise Failure('sealer_actual_compose_changed')
+    return service

@@ -13,6 +13,9 @@ logs no stream data. Independent public DNS and hostname-verified STARTTLS
 confirmed this fixed endpoint is `mail.cl8y.com`; the backend never resolves the
 private `mail.cl8y.com` alias, preventing recursive forwarding.
 
+Labels use a string sequence so Coolify can append its managed labels without
+introducing numeric mapping keys. The explicit Traefik disable remains present.
+
 The gateway alone joins new networks `wallet-security-notification` (internal,
 with alias `mail.cl8y.com`) and `wallet-security-mailu-outbound` (outbound).
 It has no published ports, mounts, socket, credentials, capabilities or writable
@@ -72,3 +75,103 @@ Focused checks: `cargo test --manifest-path deploy/mail-gateway/Cargo.toml
 and a bounded image build. Runtime preflight happens only after source review.
 [Coolify API](https://coolify.io/docs/api/endpoints/applications/create-public-application)
 is the primary creation/settings contract.
+
+## Coordinated read-only observer
+
+`--observe --app y08cgj4rjem3ldgfmxb11nsp --sha OPS_SHA --branch BRANCH`
+selects the independently reviewed `observe.sh` as this app's build hook. It
+preserves runtime env and the start hook, reads only fixed gateway and
+`seal-3nolvrgyhudkv3itihuyuim9` metadata, and deliberately exits 1 before any
+application stop/start step. There are no Docker run/create/start/stop/remove,
+filesystem-content or SMTP operations. Only selected image/user/mount metadata,
+HostConfig, gateway network names/IDs/flags/aliases and only fixed gateway/sealer/managed-proxy
+member identities, plus redacted other/self-observer counts and finite owned-project
+network events and environment **names** are emitted. Environment values and
+mount source paths are never emitted. Unrelated network member names/IDs and
+unknown event member IDs are redacted. No extra workload is inspected to
+classify the observer itself; its own namespace hostname is only a count hint. If containment removed the gateway, its
+absence is explicit; surviving owned networks/events do not imply a runtime
+pass. The receiver accepts only closed typed records. The gateway image source
+remains the fixed reviewed `44a2d36...`; observer Git source is a separate pin.
+
+## One stopped-after-capture topology reproduction
+
+`--reproduce` is a separate, independently reviewed diagnostic action, not a
+release. It uses the existing exact image/source `44a2d36...` and fetches only
+that commit's RAW Compose declaration, verifying its fixed SHA-256 before using
+it from memory with a public source value and `/dev/null` env-file. No normal
+preview, credentials, worker attachment, network repair, proxy settings, image
+build or TLS/AUTH/send is used.
+
+A successful exact-name, no-truncation daemon inventory must prove absence
+before creation intent; a failed read never means absence. The newly created
+CID is retained in memory and cleanup checks that CID, app project, scope,
+declared image and source-44 label. Partial-create fallback uses the same gates
+and bounded reads. The fixed gateway must be absent before the action. While the newly created
+owned gateway is alive, `capture.sh` emits closed network name/ID/internal/member
+and alias records before assertions. Unknown member identities are redacted.
+The existing identity, privilege, exact-network, resource and direct-worker-
+egress guards remain intact; network names, isolation and membership have
+separate failure stages. Diagnostic mode stops before TLS and emits no normal
+runtime acceptance receipt. The EXIT/TERM cleanup verifies only this app's
+newly owned gateway and stops it by ID, retaining its metadata. It never removes
+that container or another service. Success and failure both deliberately end
+with a failed build so no normal release continuation runs. Restore normal
+configuration separately, without deploying, after collecting the evidence.
+
+Docker inspect appends an outer newline even when a range template already uses
+`println`. Sorting that extra empty separator moves it to the beginning, where
+shell command substitution retains it and an exact-name comparison fails.
+`normalize-network-names.sh` removes only truly empty separator lines before
+sorting. It preserves every nonempty name, duplicate, prefix and whitespace-only
+line; all identity, exact-set, internal, membership and resource guards remain.
+The formatter fix is verification-only and does not authorize a network change.
+
+## Fixed retained-CID noAUTH preflight proposal
+
+`--noauth-preflight` is independently gated for one job. It targets only the
+fixed retained CID `643b1c...` and existing image/source44, never rebuilds,
+recreates or uses a Compose/platform working copy. It proves stopped identity,
+project/scope/name/image/source and same-daemon image-reference binding before
+start, plus exact network names/IDs/internal flags and empty membership. Existing
+binding/TLS probe names must be absent by successful inventory.
+
+After resuming only that CID it runs every normalized structural/resource/worker
+denial guard, then creates one owned image44 internal-only TLS probe with fixed
+labels and resource limits. The probe sends no AUTH or mail and its complete
+exit must succeed. The result records the exact UTC/EHLO window and keeps NAT
+source explicitly pending. Exit/TERM cleanup stops only the same identity-bound
+gateway, verifies it stopped, retains it, and removes only owned image/scope-
+matched probe objects (including partial-create fallback after proven absence).
+Success deliberately exits 1 before a normal release. Environment and release
+start settings stay preserved; restore configuration only after collection.
+Stopped pre-start admission also checks actual memory, CPU, PID and exact
+no-new-privileges settings; resource drift is refused before the retained
+container is resumed, as well as during the later live guard pass.
+
+The one independently cleared source9fd job actually ran on 2026-10-31. Its
+recovered bounded receipts are in
+`deploy/receipts/2026-10-31-gateway-noauth-9fd9cc4.json`: all identity, bounds,
+network, worker-denial and noAUTH TLS checks passed; the same gateway stopped
+and remained retained, and the owned probes were removed. The intentional failed
+job did not activate a persistent release. These are historical receipts, not a
+fresh runtime/custody verification after the workstation restart.
+
+`ops/notifications/receiver-metadata.py` reads only bounded Mailu front logs
+for this exact prior window. It emits closed transport/process/address-role
+metadata, never raw lines, unknown addresses, recipients or sessions. An owned
+address in a local/upstream field does not establish the remote peer. The reader
+always leaves source-IP clearance false for independent review. If log retention
+no longer covers the window, the evidence is missing; no additional connection
+or gateway start is implied. Sender/token scope, AUTH, delivery and worker
+attachment remain separately gated.
+
+`--activate-retained` is a separately reviewed continuation using the same
+fixed stopped CID/source44, pre-start admission and live guards. Its only
+wrapper delta is to clean both owned probes synchronously and confirm the
+fixed gateway still runs before committing persistence. TLS or probe-cleanup
+failure still stops that gateway. The build deliberately exits 1 even after
+the persistent activation receipt, preventing normal platform release steps.
+The provisioner accepts this mode only for the fixed gateway application and
+preserves environment and normal start commands. No worker attachment, token
+restriction, sender enablement or AUTH/send occurs in this action.

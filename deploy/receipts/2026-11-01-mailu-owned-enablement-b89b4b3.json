@@ -1,0 +1,19 @@
+{
+  "record": "owned_mailu_accounts_enabled_for_sandbox",
+  "date_utc": "2026-11-01",
+  "source": "b89b4b341e6059df595c7e2c2891e8ff0d0742db",
+  "command": "bao-exec --only COOLIFY_WIRE_TOKEN,COOLIFY_URL -- python3 ops/notifications/enable-owned-smoke.py",
+  "accounts_changed": 2,
+  "sender_enabled": true,
+  "receiver_enabled": true,
+  "custody_readback": true,
+  "token_ips_unchanged": true,
+  "credentials_rotated": false,
+  "admin": false,
+  "portal_changes": false,
+  "smtp_imap_auth_attempts": 0,
+  "sends": 0,
+  "trial_execution_authorized_yet": false,
+  "main_release_owner": "coordinator",
+  "production_delivery_accepted": false
+}
