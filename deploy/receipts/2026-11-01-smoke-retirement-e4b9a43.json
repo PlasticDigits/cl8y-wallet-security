@@ -1,0 +1,21 @@
+{
+  "record": "owned_smoke_receiver_retired",
+  "recorded_at_utc": "2026-11-01T02:34:42.435439+00:00",
+  "source": "e4b9a438c583debf5b6d130c9cd8af307d14405b",
+  "command": "bao-exec --only COOLIFY_WIRE_TOKEN,COOLIFY_URL -- python3 ops/notifications/retire-smoke-mailbox.py",
+  "executions": 1,
+  "changed": true,
+  "receiver_disabled": true,
+  "owned_receiver_token_revoked": true,
+  "current_custody_credential_removed": true,
+  "custody_readback": true,
+  "sender_not_modified": true,
+  "portal_or_database_changes": false,
+  "outbox_profile_checkpoint_preserved": true,
+  "smtp_imap_auth_attempts": 0,
+  "sends": 0,
+  "coordinator_reported_schema6_offhost_accepted_before_cleanup": true,
+  "coordinator_reported_owned_profile_present": true,
+  "coordinator_reported_source_active_sessions": 0,
+  "production_mode_owned_by_coordinator": true
+}
