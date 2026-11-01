@@ -14,12 +14,20 @@ with its exact deadline, and the old verified channel's removal warning. Code
 replay was rejected and the old channel remained effective through its delay.
 The exact receipt is
 `deploy/receipts/2026-11-01-owned-notification-delivery-c8f69f7.json`.
-Both owned accounts are enabled for this trial and the worker remains restricted
-to the exact owned recipient. Production allowlist removal, fresh schema6
-off-host recovery of those real outbox rows and Telegram acceptance are separate
-coordinator gates; none is inferred from the delivery receipt. The separately
-reviewed receiver-retirement helper runs only after backup acceptance and does
-not alter the normal sender, portal, outbox, profile or private recovery checkpoint.
+Both owned accounts were enabled for that trial. The coordinator then separately
+accepted a fresh schema6 off-host restore preserving the three actual SMTP
+sent/first-attempt rows and full timer/outbox/contact metadata. The owned profile
+was present with zero active source sessions, confirming no further login/logout
+was needed. After that acceptance, the reviewed receiver-retirement helper
+disabled only the smoke receiver, revoked its exact token and removed its
+credential from current custody through CAS/readback. The normal sender remained
+enabled with the verified gateway restriction in a subsequent read-only check.
+Actual cleanup and sender receipts are
+`deploy/receipts/2026-11-01-smoke-retirement-e4b9a43.json` and
+`deploy/receipts/2026-11-01-sender-after-smoke-retirement.json`.
+No portal, outbox, profile, mailbox contents or private recovery checkpoint was
+deleted. Production allowlist removal stays coordinator-owned; Telegram
+acceptance is still pending and is not inferred from owned email success.
 
 ## Authorized inventory, 2026-10-31
 
