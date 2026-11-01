@@ -26,8 +26,13 @@ Actual cleanup and sender receipts are
 `deploy/receipts/2026-11-01-smoke-retirement-e4b9a43.json` and
 `deploy/receipts/2026-11-01-sender-after-smoke-retirement.json`.
 No portal, outbox, profile, mailbox contents or private recovery checkpoint was
-deleted. Production allowlist removal stays coordinator-owned; Telegram
-acceptance is still pending and is not inferred from owned email success.
+deleted. The coordinator's reviewed production-mode job then removed the owned
+allowlist without another provider test/send. Actual public health and worker
+source remained `4fbe039`, migration 6, with email/delivery ready and pending0 /
+failed0. The final scoped email record is
+`deploy/receipts/2026-11-01-email-production-final.json`; its off-host proof links
+the backup owner's immutable schema6 artifact. Telegram acceptance is still
+pending and is not inferred from owned email success.
 
 ## Authorized inventory, 2026-10-31
 
