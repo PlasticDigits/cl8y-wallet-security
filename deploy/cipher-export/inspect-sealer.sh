@@ -16,7 +16,9 @@ inspected_id=$(docker image inspect -f '{{.Id}}' "$expected")
 source=$(docker image inspect -f '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$expected")
 printf 'SEAL_BINDING_OBS actual=%s inspected_id=%s source=%s\n' "$actual" "$inspected_id" "$source"
 [[ "$actual" = "${expected##*@}" || "$actual" = sha256:49bae27daf43dad0ea75c035dffae5e4e91f5b10f08daac8c61b19e5259e8cb1 ]]
-test "$inspected_id" = sha256:49bae27daf43dad0ea75c035dffae5e4e91f5b10f08daac8c61b19e5259e8cb1
+# The reviewed raw registry manifest binds the config digest. This daemon's
+# image .Id, like container .Image, can report that manifest instead of config.
+[[ "$inspected_id" = "${expected##*@}" || "$inspected_id" = sha256:49bae27daf43dad0ea75c035dffae5e4e91f5b10f08daac8c61b19e5259e8cb1 ]]
 test "$source" = 6ba5c8c8bcfba6b9b523ecabda4036f72f64a429
 mounts=$(docker inspect -f '{{range .Mounts}}{{println .Type .Name .Destination .RW}}{{end}}' "$container")
 printf 'SEAL_BINDING_MOUNTS_BEGIN\n%s\nSEAL_BINDING_MOUNTS_END\n' "$mounts"
@@ -26,7 +28,7 @@ grep -Fxq "volume ${portal}_backups /backups false" <<< "$volumes"
 grep -Fxq "volume ${resource}_sealed /encrypted true" <<< "$volumes"
 # Reject any other bind/volume, allowing only the declared private /tmp tmpfs.
 test -z "$(printf '%s\n' "$mounts" | awk '$1!="volume" && !($1=="tmpfs" && $2=="/tmp") {print}')"
-printf 'SEAL_BINDING_VERIFIED image_manifest=%s image_config=%s actual_image_field=%s source=%s input=%s output=%s input_ro=true output_rw=true\n' \
+printf 'SEAL_BINDING_VERIFIED image_manifest=%s reviewed_image_config=%s actual_image_field=%s inspected_image_id=%s source=%s input=%s output=%s input_ro=true output_rw=true\n' \
   "${expected##*@}" sha256:49bae27daf43dad0ea75c035dffae5e4e91f5b10f08daac8c61b19e5259e8cb1 \
-  "$actual" 6ba5c8c8bcfba6b9b523ecabda4036f72f64a429 "${portal}_backups" "${resource}_sealed"
+  "$actual" "$inspected_id" 6ba5c8c8bcfba6b9b523ecabda4036f72f64a429 "${portal}_backups" "${resource}_sealed"
 exit 1

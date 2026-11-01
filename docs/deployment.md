@@ -182,7 +182,10 @@ config `sha256:69d2e358c750593464b9590cfe48d37b3b04617fadd41e49501b57ae8d32878b`
 source `f5e40b588ccb00ba3d4712bfccd1200b42bd8a45`. Recovered configuration must
 retain both `export_image` and `export_image_config_digest`. The observer
 checks the configured manifest, pinned-reference image ID and source separately;
-container `.Image` may match only that reviewed manifest or config. A local
+container `.Image` and image `.Id` may match only that reviewed manifest or
+config. Neither raw field is relabeled as an observed config digest: on the
+deployed daemon both fields report the manifest, while the hash-verified raw
+registry manifest establishes its config mapping. A local
 image fixture remains distinct from actual private binding and export proof.
 
 The intended conditional export schedule runs through the operator's existing

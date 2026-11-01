@@ -183,6 +183,8 @@ class FinalControllerNegatives(unittest.TestCase):
         self.assertTrue(verify_records(records,cfg)['private_listener_only_verified'])
         alternate=records.replace('actual=sha256:'+'c'*64,'actual=sha256:'+'d'*64)
         self.assertEqual(verify_records(alternate,cfg)['observed_container_image_field'],'sha256:'+'d'*64)
+        manifest_ids=alternate.replace('inspected_id=sha256:'+'c'*64,'inspected_id=sha256:'+'d'*64)
+        self.assertEqual(verify_records(manifest_ids,cfg)['observed_pinned_image_id'],'sha256:'+'d'*64)
         for mutated in [records.replace('actual=sha256:'+'c'*64,'actual=sha256:'+'e'*64),records.replace('inspected_id=sha256:'+'c'*64,'inspected_id=sha256:'+'e'*64),records.replace('0100080A:470C','00000000:470C'),records+'\nWG_OBS_MOUNT volume foreign /root true',records.replace('PATH\n','PATH\nCOOLIFY_TOKEN\n')]:
             with self.assertRaises(Failure):verify_records(mutated,cfg)
         del cfg['export_image_config_digest']

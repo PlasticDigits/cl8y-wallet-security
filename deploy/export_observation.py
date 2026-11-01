@@ -16,7 +16,7 @@ def verify_records(output,config):
         raise Failure('reviewed_export_image_config_digest_absent')
     image=re.findall(r'^WG_OBS_IMAGE reference=(sha256:[0-9a-f]{64}) actual=(sha256:[0-9a-f]{64}) inspected_id=(sha256:[0-9a-f]{64}) source=([0-9a-f]{40})$',output,re.M)
     if (not image or any(ref!=manifest or actual not in {manifest,image_config}
-            or inspected!=image_config or sha!=config['export_source_sha']
+            or inspected not in {manifest,image_config} or sha!=config['export_source_sha']
             for ref,actual,inspected,sha in image)):
         raise Failure('actual_export_image_or_source_differs')
     expected='WG_OBS_HOST user=999:999 running=true network=host memory=67108864 cpu=100000000 pids=16 readonly=true ports=0'
