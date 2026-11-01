@@ -56,13 +56,51 @@ pending and is not inferred from owned email success.
   No workload receives admin authentication. A future workload reader must have
   read access to this exact object only, or the deployment owner may inject its
   scoped token directly into protected runtime-only Coolify env in memory.
-- No portal bot or bot-management enrollment capability was found in the broker,
-  available tools, OpenBao group/AppRole names, or the relevant workstation,
-  workload, forge and portal setup documentation. Existing ops/intake/CI bots
-  have other consumers and must not be borrowed or polled. The precise missing
-  capability is an authorized independent portal bot token, or an authorized
-  Telegram BotFather/managed-bot creation session. This remains agent-owned;
-  no operator task or real-recipient message is created.
+- Superseding owner instruction, 2026-11-01: reuse **@cl8y_ops_bot** for
+  portal Telegram notices. A separate portal bot is no longer required. Existing
+  ops alert senders must continue unchanged. Credential presence never grants
+  update-consumer ownership: verify the actual bot identity and webhook state,
+  and account for every existing poller before enabling the portal poll switch.
+  The intake bot remains unrelated and is not reused.
+
+## Shared ops bot preparation, 2026-11-01
+
+The portal API receives only `TELEGRAM_BOT_USERNAME=cl8y_ops_bot` and the
+nonsecret `TELEGRAM_ENABLED=true` readiness switch after deployment acceptance.
+Only the worker receives `TELEGRAM_BOT_TOKEN`. Delivery additionally requires
+`TELEGRAM_DELIVERY_ENABLED=true`; pairing polling separately requires
+`TELEGRAM_POLL_ENABLED=true`. All switches default closed. A token on its own
+never starts polling or sending. Existing ops senders keep their existing token
+and configuration; no credential rotation is part of reuse.
+
+The poller checks `getWebhookInfo` before every `getUpdates` call and refuses
+missing/invalid metadata or a nonempty webhook URL. It never calls setWebhook,
+deleteWebhook, drops updates, requests a negative offset or changes the bot's
+`allowed_updates` filter. Poll activation still requires evidence that existing
+consumers are send-only; an empty webhook does not prove absence of another
+poller. If a consumer exists, use its dispatcher rather than enable another
+poller. PostgreSQL advisory locking protects only instances of this portal.
+
+`deploy/telegram-gateway/` prepares a separate credential-free opaque TCP relay
+to literal `149.154.166.110:443`, observed through public DNS and independently
+verified with the `api.telegram.org` TLS hostname on this workstation. It has
+four concurrent sessions, a five-second connect bound and a 25-second absolute
+session deadline. It uses a new internal `wallet-security-telegram` network,
+with alias `api.telegram.org`, and a separate outbound network. A reviewed
+runtime overlay may attach only the worker to the internal network. API,
+PostgreSQL, the existing SMTP network and gateway are unchanged. Worker HTTPS
+retains end-to-end public-CA/hostname verification, disables inherited proxies
+and follows no redirects. Gateway IP changes require a reviewed source change.
+
+This is source preparation only. The scoped inventory receipt is
+`deploy/receipts/2026-11-01-shared-ops-telegram-preparation.json`.
+No validated plaintext ops token, owned Telegram recipient session or exclusive
+consumer-ownership proof has yet been established. API readiness, worker
+switches, credential injection, gateway deployment and owned delivery acceptance
+remain unperformed. No getUpdates, webhook change or message send occurred.
+The deployment coordinator owns any exact main API/worker release and must
+preserve the healthy SMTP configuration and schema 6. No backup or chain
+activation is included.
 
 ## Disabled sender preparation
 

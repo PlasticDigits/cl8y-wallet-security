@@ -60,8 +60,32 @@ pub fn email_transport() -> Option<&'static str> {
     }
 }
 pub fn telegram_ready() -> bool {
-    env::var("TELEGRAM_BOT_TOKEN").is_ok_and(|v| !v.is_empty())
-        && env::var("TELEGRAM_BOT_USERNAME").is_ok_and(|v| !v.is_empty())
+    telegram_configuration_ready(
+        env::var("PROCESS_MODE").as_deref().unwrap_or(""),
+        env::var("TELEGRAM_ENABLED").as_deref().unwrap_or(""),
+        env::var("TELEGRAM_DELIVERY_ENABLED")
+            .as_deref()
+            .unwrap_or(""),
+        env::var("TELEGRAM_BOT_USERNAME").as_deref().unwrap_or(""),
+        env::var("TELEGRAM_BOT_TOKEN").is_ok_and(|v| !v.is_empty()),
+    )
+}
+fn telegram_worker_ready() -> bool {
+    env::var("PROCESS_MODE").as_deref() == Ok("worker") && telegram_ready()
+}
+fn telegram_configuration_ready(
+    mode: &str,
+    api: &str,
+    delivery: &str,
+    username: &str,
+    token: bool,
+) -> bool {
+    username == "cl8y_ops_bot"
+        && match mode {
+            "api" => api == "true",
+            "worker" => delivery == "true" && token,
+            _ => false,
+        }
 }
 pub async fn record(
     tx: &mut Transaction<'_, Postgres>,
@@ -363,6 +387,7 @@ pub async fn deliver(
         return crate::smtp::deliver(destination, text, id).await;
     }
     let client = reqwest::Client::builder()
+        .no_proxy()
         .timeout(std::time::Duration::from_secs(15))
         .redirect(reqwest::redirect::Policy::none())
         .build()
@@ -376,6 +401,9 @@ pub async fn deliver(
   .json(&json!({"from":env::var("MAIL_FROM").map_err(|_|"provider_unconfigured")?,"to":[destination],"subject":"CL8Y wallet security notice","text":text})).send().await
         }
         "telegram" => {
+            if !telegram_worker_ready() {
+                return Err("provider_unconfigured");
+            }
             let token = env::var("TELEGRAM_BOT_TOKEN").map_err(|_| "provider_unconfigured")?;
             client.post(format!("https://api.telegram.org/bot{token}/sendMessage")).json(&json!({"chat_id":destination,"text":text,"link_preview_options":{"is_disabled":true}})).send().await
         }
@@ -406,8 +434,27 @@ pub async fn deliver(
         Err("provider_rejected")
     }
 }
+fn telegram_poll_request(offset: i64) -> Value {
+    json!({"offset":offset,"limit":20,"timeout":0})
+}
+fn telegram_webhook_clear(webhook: &Value) -> bool {
+    webhook["ok"] == true && webhook["result"]["url"] == ""
+}
+fn telegram_pair(update: &Value) -> Option<(i64, &str)> {
+    if update["message"]["chat"]["type"] != "private" {
+        return None;
+    }
+    let pair = update["message"]["text"]
+        .as_str()?
+        .strip_prefix("/start ")?;
+    let chat = update["message"]["chat"]["id"].as_i64()?;
+    (chat > 0 && pair.len() == 64 && pair.bytes().all(|v| v.is_ascii_hexdigit()))
+        .then_some((chat, pair))
+}
 pub async fn poll_telegram(app: &App) -> anyhow::Result<()> {
-    if !telegram_ready() {
+    // A token alone never claims this shared bot's update stream. Deployment must
+    // first verify that all existing consumers are send-only.
+    if !telegram_worker_ready() || env::var("TELEGRAM_POLL_ENABLED").as_deref() != Ok("true") {
         return Ok(());
     }
     let mut tx = app.db.begin().await?;
@@ -426,10 +473,27 @@ pub async fn poll_telegram(app: &App) -> anyhow::Result<()> {
     let token = env::var("TELEGRAM_BOT_TOKEN")?;
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(10))
+        .redirect(reqwest::redirect::Policy::none())
+        .no_proxy()
         .build()?;
+    // Do not disturb a webhook configured after initial enrollment.
+    let webhook: Value = client
+        .post(format!(
+            "https://api.telegram.org/bot{token}/getWebhookInfo"
+        ))
+        .send()
+        .await
+        .map_err(|_| anyhow::anyhow!("telegram inspection unavailable"))?
+        .json()
+        .await
+        .map_err(|_| anyhow::anyhow!("telegram inspection invalid"))?;
+    anyhow::ensure!(
+        telegram_webhook_clear(&webhook),
+        "telegram consumer conflict"
+    );
     let response = client
         .post(format!("https://api.telegram.org/bot{token}/getUpdates"))
-        .json(&json!({"offset":offset,"limit":20,"timeout":0,"allowed_updates":["message"]}))
+        .json(&telegram_poll_request(offset))
         .send()
         .await
         .map_err(|_| anyhow::anyhow!("telegram poll unavailable"))?;
@@ -445,19 +509,7 @@ pub async fn poll_telegram(app: &App) -> anyhow::Result<()> {
             continue;
         };
         sqlx::query("UPDATE telegram_checkpoints SET next_update_id=GREATEST(next_update_id,$1) WHERE bot_name='security'").bind(update_id+1).execute(&mut *tx).await?;
-        if update["message"]["chat"]["type"] != "private" {
-            continue;
-        }
-        let Some(text) = update["message"]["text"].as_str() else {
-            continue;
-        };
-        let Some(pair) = text.strip_prefix("/start ") else {
-            continue;
-        };
-        if pair.len() != 64 {
-            continue;
-        }
-        let Some(chat) = update["message"]["chat"]["id"].as_i64() else {
+        let Some((chat, pair)) = telegram_pair(update) else {
             continue;
         };
         let row=sqlx::query("SELECT c.id,c.profile_id,p.anchor_wallet FROM contact_verifications v JOIN contacts c ON c.id=v.contact_id JOIN profiles p ON p.id=c.profile_id WHERE v.token_hash=$1 AND v.purpose='telegram_pair' AND v.used_at IS NULL AND v.expires_at>now() AND c.deleted_at IS NULL FOR UPDATE OF v,c")
@@ -494,4 +546,122 @@ pub async fn poll_telegram(app: &App) -> anyhow::Result<()> {
     }
     tx.commit().await?;
     Ok(())
+}
+
+#[cfg(test)]
+mod telegram_tests {
+    use super::*;
+    #[test]
+    fn refuses_webhooks_and_preserves_bot_update_subscription() {
+        assert!(telegram_webhook_clear(
+            &json!({"ok":true,"result":{"url":""}})
+        ));
+        for value in [
+            json!({}),
+            json!({"ok":false,"result":{"url":""}}),
+            json!({"ok":true,"result":{}}),
+            json!({"ok":true,"result":{"url":"https://existing.invalid/hook"}}),
+        ] {
+            assert!(!telegram_webhook_clear(&value));
+        }
+        let request = telegram_poll_request(123);
+        assert_eq!(request["offset"], 123);
+        assert!(request.get("allowed_updates").is_none());
+        assert!(request.get("drop_pending_updates").is_none());
+    }
+    #[test]
+    fn only_private_exact_pairing_commands_are_candidates() {
+        let pair = "a".repeat(64);
+        let valid = json!({"update_id":1,"message":{"chat":{"type":"private","id":42},"text":format!("/start {pair}")}});
+        assert_eq!(telegram_pair(&valid), Some((42, pair.as_str())));
+        let mut value = valid.clone();
+        value["message"]["chat"]["type"] = json!("group");
+        assert!(telegram_pair(&value).is_none());
+        value = valid.clone();
+        value["message"]["text"] = json!("/start unrelated");
+        assert!(telegram_pair(&value).is_none());
+        value = valid.clone();
+        value["message"]["text"] = json!(format!("/start {}", "x".repeat(64)));
+        assert!(telegram_pair(&value).is_none());
+        value = valid.clone();
+        value["message"]["chat"]["id"] = json!(-42);
+        assert!(telegram_pair(&value).is_none());
+        assert!(telegram_pair(&json!({"update_id":2,"callback_query":{}})).is_none());
+    }
+    #[tokio::test]
+    async fn disabled_poll_returns_before_database_or_network() {
+        // This suite runs without Telegram credentials; the lazy pool is never reachable.
+        assert_ne!(env::var("TELEGRAM_POLL_ENABLED").as_deref(), Ok("true"));
+        let app = App {
+            db: sqlx::postgres::PgPoolOptions::new()
+                .acquire_timeout(std::time::Duration::from_secs(5))
+                .connect_lazy("postgresql://synthetic:synthetic@192.0.2.1:1/synthetic")
+                .unwrap(),
+            origin: "https://example.invalid".into(),
+            chain_id: "test".into(),
+            source_sha: "test".into(),
+            contact_key: std::sync::Arc::new([7; 32]),
+            admission: std::sync::Arc::new(crate::admission::Admission::default()),
+            trusted_proxies: std::sync::Arc::new(Default::default()),
+        };
+        tokio::time::timeout(std::time::Duration::from_millis(100), poll_telegram(&app))
+            .await
+            .unwrap()
+            .unwrap();
+    }
+    #[test]
+    fn api_readiness_requires_explicit_switch_without_receiving_token() {
+        assert!(telegram_configuration_ready(
+            "api",
+            "true",
+            "false",
+            "cl8y_ops_bot",
+            false
+        ));
+        assert!(!telegram_configuration_ready(
+            "api",
+            "false",
+            "true",
+            "cl8y_ops_bot",
+            true
+        ));
+        assert!(!telegram_configuration_ready(
+            "api",
+            "true",
+            "true",
+            "other_bot",
+            true
+        ));
+    }
+    #[test]
+    fn credentials_alone_never_enable_worker_delivery() {
+        assert!(!telegram_configuration_ready(
+            "worker",
+            "true",
+            "false",
+            "cl8y_ops_bot",
+            true
+        ));
+        assert!(!telegram_configuration_ready(
+            "worker",
+            "true",
+            "true",
+            "cl8y_ops_bot",
+            false
+        ));
+        assert!(telegram_configuration_ready(
+            "worker",
+            "false",
+            "true",
+            "cl8y_ops_bot",
+            true
+        ));
+        assert!(!telegram_configuration_ready(
+            "migrate",
+            "true",
+            "true",
+            "cl8y_ops_bot",
+            true
+        ));
+    }
 }

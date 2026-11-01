@@ -1,0 +1,42 @@
+{
+  "record": "shared_ops_telegram_source_preparation",
+  "date": "2026-11-01",
+  "owner_authorized_bot": "cl8y_ops_bot",
+  "canonical_openbao_names_checked": [
+    "secret/cl8y/groups",
+    "secret/cl8y/cursor",
+    "secret/cl8y/logs",
+    "secret/workstations/answorld",
+    "secret/groups/woodpecker-admin/current",
+    "secret/groups/forgejo-admin/current",
+    "secret/groups/cl8y-pm",
+    "secret/groups/cl8y-wallet-security",
+    "secret/services/cl8y-host-authority"
+  ],
+  "validated_ops_token_found": false,
+  "controller_production_ops_token_field_empty": true,
+  "controller_preview_candidate_authenticated": false,
+  "bot_consumer_inventory_complete": false,
+  "documented_consumers": [
+    "forgejo_backup_failure_sendMessage",
+    "woodpecker_sendMessage",
+    "controller_ops_lifecycle_sendMessage"
+  ],
+  "getWebhookInfo_verified": false,
+  "owned_telegram_recipient_capability_found": false,
+  "fixed_gateway_endpoint": "149.154.166.110:443",
+  "workstation_public_ca_hostname_verification": true,
+  "gateway_runtime_deployed": false,
+  "main_release_performed": false,
+  "credential_injected": false,
+  "getUpdates_calls": 0,
+  "webhook_mutations": 0,
+  "messages_sent": 0,
+  "telegram_delivery_accepted": false,
+  "backup_changes": false,
+  "chain_operations": false,
+  "focused_api_tests_passed": 5,
+  "bounded_relay_tests_passed": 2,
+  "database_pairing_replay_integration_verified": false,
+  "owned_send_verified": false
+}

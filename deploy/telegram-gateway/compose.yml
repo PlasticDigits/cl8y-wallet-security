@@ -1,0 +1,28 @@
+name: wallet-security-telegram-gateway
+services:
+  gateway:
+    build:
+      context: .
+      args: {SOURCE_SHA: '${SOURCE_SHA:?}'}
+    image: wallet-security-telegram-gateway:${SOURCE_SHA:?}
+    container_name: wallet-security-telegram-gateway
+    user: '10001:10001'
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    sysctls: {net.ipv4.ip_unprivileged_port_start: '0'}
+    restart: unless-stopped
+    mem_limit: 32m
+    cpus: 0.1
+    pids_limit: 16
+    logging: {driver: none}
+    labels:
+      - traefik.enable=false
+      - com.cl8y.scope=wallet-security-telegram-gateway
+    healthcheck: {disable: true}
+    networks:
+      telegram: {aliases: [api.telegram.org]}
+      outbound: {}
+networks:
+  telegram: {internal: true, name: wallet-security-telegram}
+  outbound: {name: wallet-security-telegram-outbound}
