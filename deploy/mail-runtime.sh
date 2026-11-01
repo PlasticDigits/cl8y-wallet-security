@@ -106,4 +106,9 @@ done
 test "$(readc '{{with index .NetworkSettings.Networks "wallet-security-notification"}}{{.NetworkID}}{{end}}' "$worker")" = e1f3b89f1f7b590b7fa34def87b39521927b5b28d251189734ebd019b84081b4
 test "$(timeout 5 docker network inspect --format '{{len .Containers}}' "$NET")" = 2
 timeout 5 docker exec "$worker" /bin/bash -c 'while read -r iface destination rest; do test "$destination" != 00000000 || exit 1; done </proc/net/route'
-printf 'mail_runtime_started source_sha=%s migration_target=6 mode=%s worker_networks=2 api_pg_notification_network=false\n' "$SOURCE" "$mode"
+gateway_ip=$(readc '{{with index .NetworkSettings.Networks "wallet-security-notification"}}{{.IPAddress}}{{end}}' "$GATEWAY")
+test -n "$gateway_ip"
+answers=$(timeout 5 docker exec "$worker" getent ahostsv4 mail.cl8y.com)
+test -n "$answers"
+while read -r address rest; do test "$address" = "$gateway_ip"; done <<< "$answers"
+printf 'mail_runtime_started source_sha=%s migration_target=6 mode=%s worker_networks=2 api_pg_notification_network=false alias_fixed_gateway=true\n' "$SOURCE" "$mode"
