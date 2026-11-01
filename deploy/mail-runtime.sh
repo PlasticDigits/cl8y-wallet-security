@@ -9,7 +9,17 @@ MANIFEST=sha256:ff9dc660dabb80a426c4cd0f52e222277549756620d0cc457c4e05cc8c9ceb4d
 CONFIG=sha256:296ada1e15c704943511af859d62d43922f7ce352d51b23adaafdc70c6d0a2ea
 GATEWAY=643b1cc6f975dc11dbae9f3de7e8576b5922b502f3147ec6d076c7aea8902886
 NET=wallet-security-notification
-test "$#" = 2 && test "$1" = "$APP" && test "$2" = "$SOURCE"
+test "$#" = 3 && test "$1" = "$APP" && test "$2" = "$SOURCE"
+mode=$3
+api_ready=false
+delivery_ready=false
+sandbox=',"NOTIFICATION_SANDBOX_DESTINATIONS":"${NOTIFICATION_SANDBOX_DESTINATIONS:?}"'
+case "$mode" in
+  stage) ;;
+  sandbox) api_ready=true; delivery_ready=true ;;
+  production) api_ready=true; delivery_ready=true; sandbox='' ;;
+  *) exit 1 ;;
+esac
 stage=preflight
 overlay=$(mktemp /tmp/wallet-security-mail-overlay.XXXXXX)
 transition=false
@@ -47,17 +57,26 @@ test "$(readc '{{.State.Running}}' "$GATEWAY")" = true
 test "$(readc '{{index .Config.Labels "com.cl8y.owner"}}' "$GATEWAY")" = y08cgj4rjem3ldgfmxb11nsp
 test "$(readc '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$GATEWAY")" = 44a2d3604b2051278aafcfa80fa4e19f4eb6c1d5
 test "$(timeout 5 docker network inspect --format '{{.Internal}}' "$NET")" = true
-test "$(timeout 5 docker network inspect --format '{{len .Containers}}' "$NET")" = 1
 test "$(readc '{{with index .NetworkSettings.Networks "wallet-security-notification"}}{{.NetworkID}}{{end}}' "$GATEWAY")" = e1f3b89f1f7b590b7fa34def87b39521927b5b28d251189734ebd019b84081b4
-# This file contains literal variable references, never expanded secret values.
-printf '{"services":{"api":{"environment":{"DATABASE_URL":"postgresql://security_api:${DB_API_PASSWORD:?}@%s-postgres-1:5432/wallet_security","EMAIL_PROVIDER":"smtp","MAILU_EMAIL_ENABLED":"${MAILU_EMAIL_ENABLED:-false}"}},"worker":{"networks":["private","notification"],"environment":{"EMAIL_PROVIDER":"smtp","MAILU_SMTP_TOKEN":"${MAILU_SMTP_TOKEN:?}","MAILU_DELIVERY_ENABLED":"${MAILU_DELIVERY_ENABLED:-false}","NOTIFICATION_SANDBOX_DESTINATIONS":"${NOTIFICATION_SANDBOX_DESTINATIONS:?}"}}},"networks":{"notification":{"external":true,"name":"wallet-security-notification"}}}\n' "$APP" > "$overlay"
-compose=(docker compose --env-file .env -f compose.yml -f "$overlay" --project-directory "/data/coolify/applications/$APP" -p "$APP")
-timeout 15 "${compose[@]}" config --quiet
 api=$(service_cid api); worker=$(service_cid worker)
 owned_app "$api"; owned_app "$worker"
+private=$(readc "{{with index .NetworkSettings.Networks \"${APP}_private\"}}{{.NetworkID}}{{end}}" "$worker")
+[[ "$private" =~ ^[a-f0-9]{64}$ ]]
+test "$(timeout 5 docker network inspect --format '{{.Internal}}' "$private")" = true
+members=$(timeout 5 docker network inspect --format '{{len .Containers}}' "$NET")
+if test "$members" = 2; then
+  # Rerunning the same release/mode may only find its own upgraded worker.
+  test "$(readc '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$worker")" = "$SOURCE"
+  test "$(timeout 5 docker network inspect --format "{{with index .Containers \"$worker\"}}owned{{end}}" "$NET")" = owned
+else test "$members" = 1
+fi
+# This file contains literal variable references, never expanded secret values.
+printf '{"services":{"api":{"environment":{"DATABASE_URL":"postgresql://security_api:${DB_API_PASSWORD:?}@%s-postgres-1:5432/wallet_security","EMAIL_PROVIDER":"smtp","MAILU_EMAIL_ENABLED":"%s"}},"worker":{"networks":["private","notification"],"environment":{"EMAIL_PROVIDER":"smtp","MAILU_SMTP_TOKEN":"${MAILU_SMTP_TOKEN:?}","MAILU_DELIVERY_ENABLED":"%s"%s}}},"networks":{"notification":{"external":true,"name":"wallet-security-notification"}}}\n' "$APP" "$api_ready" "$delivery_ready" "$sandbox" > "$overlay"
+compose=(docker compose --env-file .env -f compose.yml -f "$overlay" --project-directory "/data/coolify/applications/$APP" -p "$APP")
+timeout 15 "${compose[@]}" config --quiet
 stage=fence
 transition=true
-timeout 30 docker stop --time 12 "$worker" "$api" >/dev/null
+timeout 40 docker stop --time 25 "$worker" "$api" >/dev/null
 test "$(readc '{{.State.Running}}' "$worker")" = false
 test "$(readc '{{.State.Running}}' "$api")" = false
 stage=migrate_and_start
@@ -72,6 +91,7 @@ for cid in "$api" "$worker"; do
   test "$(readc '{{.HostConfig.ReadonlyRootfs}}' "$cid")" = true
 done
 test "$(readc '{{len .NetworkSettings.Networks}}' "$worker")" = 2
+test "$(readc "{{with index .NetworkSettings.Networks \"${APP}_private\"}}{{.NetworkID}}{{end}}" "$worker")" = "$private"
 test "$(readc '{{with index .NetworkSettings.Networks "coolify"}}attached{{end}}' "$worker")" = ''
 test "$(readc '{{with index .NetworkSettings.Networks "wallet-security-mailu-outbound"}}attached{{end}}' "$worker")" = ''
 for cid in "$api" "$postgres"; do
@@ -79,4 +99,4 @@ for cid in "$api" "$postgres"; do
 done
 test "$(readc '{{with index .NetworkSettings.Networks "wallet-security-notification"}}{{.NetworkID}}{{end}}' "$worker")" = e1f3b89f1f7b590b7fa34def87b39521927b5b28d251189734ebd019b84081b4
 test "$(timeout 5 docker network inspect --format '{{len .Containers}}' "$NET")" = 2
-printf 'mail_runtime_started source_sha=%s migration_target=6 worker_networks=2 api_pg_notification_network=false\n' "$SOURCE"
+printf 'mail_runtime_started source_sha=%s migration_target=6 mode=%s worker_networks=2 api_pg_notification_network=false\n' "$SOURCE" "$mode"
