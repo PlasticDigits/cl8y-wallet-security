@@ -1,0 +1,45 @@
+{
+  "scope": "Production portal email runtime; Telegram and on-chain activation remain separate",
+  "url": "https://security.cl8y.com",
+  "application_source_sha": "4fbe03977337925f6185b393a8aa39437095b097",
+  "runtime_hook_sha": "5c6e750676640047ed4498b9ab2a741d71318084",
+  "manifest_digest": "sha256:ff9dc660dabb80a426c4cd0f52e222277549756620d0cc457c4e05cc8c9ceb4d",
+  "config_digest": "sha256:296ada1e15c704943511af859d62d43922f7ce352d51b23adaafdc70c6d0a2ea",
+  "schema_version": 6,
+  "production_deployment": "2m1j26wruzlryqvry8heju3j",
+  "production_finished_utc": "2026-11-01T02:34:37Z",
+  "public_read_utc": "2026-11-01T02:37:59Z",
+  "health_http_status": 200,
+  "worker_source_matches": true,
+  "email_delivery_enabled": true,
+  "pending_notifications": 0,
+  "failed_notifications": 0,
+  "boundaries": {
+    "smtp_credential_worker_only": true,
+    "worker_private_and_notification_networks_only": true,
+    "worker_no_default_route": true,
+    "worker_dns_resolves_fixed_gateway": true,
+    "api_and_postgres_off_notification_network": true,
+    "sandbox_recipient_restriction_removed_after_owned_acceptance": true,
+    "owned_receiver_disabled_and_token_revoked": true,
+    "normal_sender_enabled_with_verified_gateway_ip_scope": true
+  },
+  "actual_owned_trial": {
+    "receipt_commit": "987d77558486952b12455db8474e6d04ac8b3351",
+    "messages": 3,
+    "checks": ["email opt-in and verification", "verification replay rejected", "assignment timer and deadline", "old-channel removal warning and preservation"]
+  },
+  "offhost_recovery": {
+    "dump_utc": "2026-11-01T02:17:27Z",
+    "cipher_sha256": "66b1b244c9b2fa3c853b96d466301f357c8aae63b16603d11b4aa5a9646ac48a",
+    "fresh_vault_and_exact_object_restore": true,
+    "restored_smtp_sent_with_first_attempt": 3,
+    "full_timer_contact_event_outbox_metadata_preserved": true,
+    "owned_profile_present": true,
+    "owned_active_sessions_at_snapshot": 0,
+    "scratch_authentication_invalidated_and_scratch_removed": true,
+    "journal_clean_and_released": true
+  },
+  "rollout_correction": "Coolify removed old services before the first custom start. Recovery admits only successful empty inventories, requires the exact owned persistent data volume, and rejects unknown or ambiguous state; no legacy worker rollback was used.",
+  "remaining_gates": ["Dedicated Telegram identity/token", "Authorized governance signing and verified role/protocol transition; security-v1 coverage 0/35", "Unattended off-host upload enrollment and reboot-safe operator connectivity"]
+}

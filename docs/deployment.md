@@ -121,3 +121,21 @@ network (no shared application network or published ports), inject provider
 credentials only through Coolify, and verify both permitted and denied egress.
 Do not merely attach the worker to the shared `coolify` network. Keep independent final
 security/deployment acceptance open until these checks pass on the final SHA.
+
+## November 1 email runtime
+
+The [schema-6 production receipt](../deploy/receipts/2026-11-01-mail-runtime-4fbe039.json)
+binds the tested public image, independently reviewed runtime hook, successful
+owned email trial and fresh encrypted off-host restore. The hook in
+[`deploy/mail-runtime.sh`](../deploy/mail-runtime.sh) keeps SMTP credentials only
+in the worker and attaches only that worker to the private notification network.
+`stage` disables delivery, `sandbox` permits only the fixed owned test mailbox,
+and `production` removes that test restriction after accepted delivery/recovery
+proof. The API and PostgreSQL remain outside the notification network.
+
+Coolify may remove old containers before calling a custom start hook. The hook
+therefore accepts only a successful empty service inventory, verifies the exact
+existing PostgreSQL volume before recreation, and refuses ambiguous or failed
+inventories. It never rolls an SMTP worker back to a pre-migration-6 version.
+Unattended off-host enrollment, Telegram credentials and on-chain activation
+retain separate acceptance; this receipt does not assert them complete.
