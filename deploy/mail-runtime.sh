@@ -10,6 +10,8 @@ CONFIG=sha256:296ada1e15c704943511af859d62d43922f7ce352d51b23adaafdc70c6d0a2ea
 GATEWAY=643b1cc6f975dc11dbae9f3de7e8576b5922b502f3147ec6d076c7aea8902886
 NET=wallet-security-notification
 test "$#" = 3 && test "$1" = "$APP" && test "$2" = "$SOURCE"
+# Compose must select exactly the image checked below, independent of old .env.
+export SOURCE_SHA="$SOURCE"
 mode=$3
 api_ready=false
 delivery_ready=false
@@ -54,7 +56,9 @@ test "$(timeout 5 docker image inspect --format '{{index .Config.Labels "org.ope
 actual=$(timeout 5 docker image inspect --format '{{.Id}}' "$image")
 test "$actual" = "$MANIFEST" || test "$actual" = "$CONFIG"
 test "$(readc '{{.State.Running}}' "$GATEWAY")" = true
-test "$(readc '{{index .Config.Labels "com.cl8y.owner"}}' "$GATEWAY")" = y08cgj4rjem3ldgfmxb11nsp
+test "$(readc '{{.Name}}' "$GATEWAY")" = /wallet-security-mail-gateway
+test "$(readc '{{index .Config.Labels "com.docker.compose.project"}}' "$GATEWAY")" = y08cgj4rjem3ldgfmxb11nsp
+test "$(readc '{{index .Config.Labels "com.cl8y.scope"}}' "$GATEWAY")" = wallet-security-mail-gateway
 test "$(readc '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$GATEWAY")" = 44a2d3604b2051278aafcfa80fa4e19f4eb6c1d5
 test "$(timeout 5 docker network inspect --format '{{.Internal}}' "$NET")" = true
 test "$(readc '{{with index .NetworkSettings.Networks "wallet-security-notification"}}{{.NetworkID}}{{end}}' "$GATEWAY")" = e1f3b89f1f7b590b7fa34def87b39521927b5b28d251189734ebd019b84081b4
